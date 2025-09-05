@@ -10,6 +10,7 @@ const { authenticateApiKey } = require('../middleware/auth')
 const logger = require('../utils/logger')
 const redis = require('../models/redis')
 const sessionHelper = require('../utils/sessionHelper')
+const requestDumper = require('../utils/requestDumper')
 
 const router = express.Router()
 
@@ -46,6 +47,18 @@ async function handleMessagesRequest(req, res) {
     logger.api(
       `🚀 Processing ${isStream ? 'stream' : 'non-stream'} request for key: ${req.apiKey.name}`
     )
+
+    // Dump原始请求（Claude原生API格式）
+    await requestDumper.dumpOriginalRequest({
+      model: req.body.model,
+      headers: req.headers,
+      body: req.body,
+      apiKey: {
+        key: req.apiKey.key,
+        name: req.apiKey.name
+      },
+      sessionHash: sessionHelper.generateSessionHash(req.body)
+    })
 
     if (isStream) {
       // 流式响应 - 只使用官方真实usage数据

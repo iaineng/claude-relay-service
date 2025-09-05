@@ -15,6 +15,7 @@ const apiKeyService = require('../services/apiKeyService')
 const unifiedClaudeScheduler = require('../services/unifiedClaudeScheduler')
 const claudeCodeHeadersService = require('../services/claudeCodeHeadersService')
 const sessionHelper = require('../utils/sessionHelper')
+const requestDumper = require('../utils/requestDumper')
 
 // 加载模型定价数据
 let modelPricingData = {}
@@ -188,6 +189,18 @@ async function handleChatCompletion(req, res, apiKeyData) {
 
     // 转换 OpenAI 请求为 Claude 格式
     const claudeRequest = openaiToClaude.convertRequest(req.body)
+
+    // Dump原始请求
+    await requestDumper.dumpOriginalRequest({
+      model: req.body.model,
+      headers: req.headers,
+      body: req.body,
+      apiKey: {
+        key: apiKeyData.key,
+        name: apiKeyData.name
+      },
+      sessionHash: sessionHelper.generateSessionHash(claudeRequest)
+    })
 
     // 检查模型限制
     if (apiKeyData.enableModelRestriction && apiKeyData.restrictedModels?.length > 0) {

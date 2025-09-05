@@ -10,6 +10,7 @@ const logger = require('../utils/logger')
 const config = require('../../config/config')
 const claudeCodeHeadersService = require('./claudeCodeHeadersService')
 const redis = require('../models/redis')
+const requestDumper = require('../utils/requestDumper')
 
 class ClaudeRelayService {
   constructor() {
@@ -773,6 +774,18 @@ class ClaudeRelayService {
         reject(new Error('Request timeout'))
       })
 
+      // Dump最终请求（非流式）
+      requestDumper.dumpFinalRequest({
+        model: body.model,
+        headers: options.headers,
+        body: body,
+        accountId: accountId,
+        proxyInfo: proxyAgent ? { type: 'configured' } : null,
+        sessionHash: sessionHelper.generateSessionHash(body)
+      }).catch(err => {
+        logger.debug('Failed to dump final request:', err.message)
+      })
+
       // 写入请求体
       req.write(JSON.stringify(body))
       req.end()
@@ -1417,6 +1430,18 @@ class ClaudeRelayService {
         }
       })
 
+      // Dump最终请求（流式）
+      requestDumper.dumpFinalRequest({
+        model: body.model,
+        headers: options.headers,
+        body: body,
+        accountId: accountId,
+        proxyInfo: proxyAgent ? { type: 'configured' } : null,
+        sessionHash: sessionHash
+      }).catch(err => {
+        logger.debug('Failed to dump stream final request:', err.message)
+      })
+
       // 写入请求体
       req.write(JSON.stringify(body))
       req.end()
@@ -1564,6 +1589,18 @@ class ClaudeRelayService {
         if (!req.destroyed) {
           req.destroy()
         }
+      })
+
+      // Dump最终请求（流式 - _makeClaudeStreamRequest）
+      requestDumper.dumpFinalRequest({
+        model: body.model,
+        headers: options.headers,
+        body: body,
+        accountId: accountId,
+        proxyInfo: proxyAgent ? { type: 'configured' } : null,
+        sessionHash: sessionHelper.generateSessionHash(body)
+      }).catch(err => {
+        logger.debug('Failed to dump stream request:', err.message)
       })
 
       // 写入请求体
