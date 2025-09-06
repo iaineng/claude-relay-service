@@ -13,7 +13,6 @@ const logger = require('../utils/logger')
 const oauthHelper = require('../utils/oauthHelper')
 const CostCalculator = require('../utils/costCalculator')
 const pricingService = require('../services/pricingService')
-const claudeCodeHeadersService = require('../services/claudeCodeHeadersService')
 const webhookNotifier = require('../utils/webhookNotifier')
 const axios = require('axios')
 const crypto = require('crypto')
@@ -4955,58 +4954,6 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
     return res
       .status(500)
       .json({ error: 'Failed to calculate usage costs', message: error.message })
-  }
-})
-
-// 📋 获取所有账号的 Claude Code headers 信息
-router.get('/claude-code-headers', authenticateAdmin, async (req, res) => {
-  try {
-    const allHeaders = await claudeCodeHeadersService.getAllAccountHeaders()
-
-    // 获取所有 Claude 账号信息
-    const accounts = await claudeAccountService.getAllAccounts()
-    const accountMap = {}
-    accounts.forEach((account) => {
-      accountMap[account.id] = account.name
-    })
-
-    // 格式化输出
-    const formattedData = Object.entries(allHeaders).map(([accountId, data]) => ({
-      accountId,
-      accountName: accountMap[accountId] || 'Unknown',
-      version: data.version,
-      userAgent: data.headers['user-agent'],
-      updatedAt: data.updatedAt,
-      headers: data.headers
-    }))
-
-    return res.json({
-      success: true,
-      data: formattedData
-    })
-  } catch (error) {
-    logger.error('❌ Failed to get Claude Code headers:', error)
-    return res
-      .status(500)
-      .json({ error: 'Failed to get Claude Code headers', message: error.message })
-  }
-})
-
-// 🗑️ 清除指定账号的 Claude Code headers
-router.delete('/claude-code-headers/:accountId', authenticateAdmin, async (req, res) => {
-  try {
-    const { accountId } = req.params
-    await claudeCodeHeadersService.clearAccountHeaders(accountId)
-
-    return res.json({
-      success: true,
-      message: `Claude Code headers cleared for account ${accountId}`
-    })
-  } catch (error) {
-    logger.error('❌ Failed to clear Claude Code headers:', error)
-    return res
-      .status(500)
-      .json({ error: 'Failed to clear Claude Code headers', message: error.message })
   }
 })
 

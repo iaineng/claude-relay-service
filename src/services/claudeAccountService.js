@@ -5,6 +5,7 @@ const axios = require('axios')
 const redis = require('../models/redis')
 const logger = require('../utils/logger')
 const config = require('../../config/config')
+const claudeConstants = require('../utils/claudeConstants')
 const { maskToken } = require('../utils/tokenMask')
 const {
   logRefreshStart,
@@ -232,7 +233,7 @@ class ClaudeAccountService {
           headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json, text/plain, */*',
-            'User-Agent': 'claude-cli/1.0.56 (external, cli)',
+            'User-Agent': claudeConstants.USER_AGENT,
             'Accept-Language': 'en-US,en;q=0.9',
             Referer: 'https://claude.ai/',
             Origin: 'https://claude.ai'

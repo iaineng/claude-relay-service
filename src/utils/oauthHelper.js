@@ -7,6 +7,7 @@ const crypto = require('crypto')
 const ProxyHelper = require('./proxyHelper')
 const axios = require('axios')
 const logger = require('./logger')
+const claudeConstants = require('./claudeConstants')
 
 // OAuth 配置常量 - 从claude-code-login.js提取
 const OAUTH_CONFIG = {
@@ -176,7 +177,7 @@ async function exchangeCodeForTokens(authorizationCode, codeVerifier, state, pro
     const response = await axios.post(OAUTH_CONFIG.TOKEN_URL, params, {
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'claude-cli/1.0.56 (external, cli)',
+        'User-Agent': claudeConstants.USER_AGENT,
         Accept: 'application/json, text/plain, */*',
         'Accept-Language': 'en-US,en;q=0.9',
         Referer: 'https://claude.ai/',
@@ -381,7 +382,7 @@ async function exchangeSetupTokenCode(authorizationCode, codeVerifier, state, pr
     const response = await axios.post(OAUTH_CONFIG.TOKEN_URL, params, {
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'claude-cli/1.0.56 (external, cli)',
+        'User-Agent': claudeConstants.USER_AGENT,
         Accept: 'application/json, text/plain, */*',
         'Accept-Language': 'en-US,en;q=0.9',
         Referer: 'https://claude.ai/',

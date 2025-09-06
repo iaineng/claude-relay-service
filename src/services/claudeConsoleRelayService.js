@@ -2,10 +2,11 @@ const axios = require('axios')
 const claudeConsoleAccountService = require('./claudeConsoleAccountService')
 const logger = require('../utils/logger')
 const config = require('../../config/config')
+const claudeConstants = require('../utils/claudeConstants')
 
 class ClaudeConsoleRelayService {
   constructor() {
-    this.defaultUserAgent = 'claude-cli/1.0.69 (external, cli)'
+    this.defaultUserAgent = claudeConstants.USER_AGENT
   }
 
   // 🚀 转发请求到Claude Console API

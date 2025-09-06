@@ -8,7 +8,7 @@ const unifiedClaudeScheduler = require('./unifiedClaudeScheduler')
 const sessionHelper = require('../utils/sessionHelper')
 const logger = require('../utils/logger')
 const config = require('../../config/config')
-const claudeCodeHeadersService = require('./claudeCodeHeadersService')
+const claudeConstants = require('../utils/claudeConstants')
 const redis = require('../models/redis')
 const requestDumper = require('../utils/requestDumper')
 
@@ -18,46 +18,6 @@ class ClaudeRelayService {
     this.apiVersion = config.claude.apiVersion
     this.betaHeader = config.claude.betaHeader
     this.systemPrompt = config.claude.systemPrompt
-    this.claudeCodeSystemPrompt = "You are Claude Code, Anthropic's official CLI for Claude."
-  }
-
-  // 🔍 判断是否是真实的 Claude Code 请求
-  isRealClaudeCodeRequest(requestBody, clientHeaders) {
-    // 检查 user-agent 是否匹配 Claude Code 格式
-    const userAgent = clientHeaders?.['user-agent'] || clientHeaders?.['User-Agent'] || ''
-    const isClaudeCodeUserAgent = /^claude-cli\/[\d.]+\s+\(/i.test(userAgent)
-
-    // 检查系统提示词是否包含 Claude Code 标识
-    const hasClaudeCodeSystemPrompt = this._hasClaudeCodeSystemPrompt(requestBody)
-
-    // 只有当 user-agent 匹配且系统提示词正确时，才认为是真实的 Claude Code 请求
-    return isClaudeCodeUserAgent && hasClaudeCodeSystemPrompt
-  }
-
-  // 🔍 检查请求中是否包含 Claude Code 系统提示词
-  _hasClaudeCodeSystemPrompt(requestBody) {
-    if (!requestBody || !requestBody.system) {
-      return false
-    }
-
-    // 如果是字符串格式，一定不是真实的 Claude Code 请求
-    if (typeof requestBody.system === 'string') {
-      return false
-    }
-
-    // 处理数组格式
-    if (Array.isArray(requestBody.system) && requestBody.system.length > 0) {
-      const firstItem = requestBody.system[0]
-      // 检查第一个元素是否包含 Claude Code 提示词
-      return (
-        firstItem &&
-        firstItem.type === 'text' &&
-        firstItem.text &&
-        firstItem.text === this.claudeCodeSystemPrompt
-      )
-    }
-
-    return false
   }
 
   // 🚀 转发请求到Claude API
@@ -304,15 +264,6 @@ class ClaudeRelayService {
         )
         if (isRateLimited) {
           await unifiedClaudeScheduler.removeAccountRateLimit(accountId, accountType)
-        }
-
-        // 只有真实的 Claude Code 请求才更新 headers
-        if (
-          clientHeaders &&
-          Object.keys(clientHeaders).length > 0 &&
-          this.isRealClaudeCodeRequest(requestBody, clientHeaders)
-        ) {
-          await claudeCodeHeadersService.storeAccountHeaders(accountId, clientHeaders)
         }
       }
 
@@ -570,43 +521,6 @@ class ClaudeRelayService {
     }
   }
 
-  // 🔧 过滤客户端请求头
-  _filterClientHeaders(clientHeaders) {
-    // 需要移除的敏感 headers
-    const sensitiveHeaders = [
-      'content-type',
-      'user-agent',
-      'x-api-key',
-      'authorization',
-      'host',
-      'content-length',
-      'connection',
-      'proxy-authorization',
-      'content-encoding',
-      'transfer-encoding'
-    ]
-
-    // 应该保留的 headers（用于会话一致性和追踪）
-    const allowedHeaders = ['x-request-id']
-
-    const filteredHeaders = {}
-
-    // 转发客户端的非敏感 headers
-    Object.keys(clientHeaders || {}).forEach((key) => {
-      const lowerKey = key.toLowerCase()
-      // 如果在允许列表中，直接保留
-      if (allowedHeaders.includes(lowerKey)) {
-        filteredHeaders[key] = clientHeaders[key]
-      }
-      // 如果不在敏感列表中，也保留
-      else if (!sensitiveHeaders.includes(lowerKey)) {
-        filteredHeaders[key] = clientHeaders[key]
-      }
-    })
-
-    return filteredHeaders
-  }
-
   // 🔗 发送请求到Claude API
   async _makeClaudeRequest(
     body,
@@ -619,33 +533,7 @@ class ClaudeRelayService {
   ) {
     const url = new URL(this.claudeApiUrl)
 
-    // 获取账户信息用于统一 User-Agent
-    const account = await claudeAccountService.getAccount(accountId)
-
-    // 获取统一的 User-Agent
-    const unifiedUA = await this.captureAndGetUnifiedUserAgent(clientHeaders, account)
-
-    // 获取过滤后的客户端 headers
-    const filteredHeaders = this._filterClientHeaders(clientHeaders)
-
-    // 判断是否是真实的 Claude Code 请求
-    const isRealClaudeCode = this.isRealClaudeCodeRequest(body, clientHeaders)
-
-    // 如果不是真实的 Claude Code 请求，需要使用从账户获取的 Claude Code headers
-    const finalHeaders = { ...filteredHeaders }
-
-    if (!isRealClaudeCode) {
-      // 获取该账号存储的 Claude Code headers
-      const claudeCodeHeaders = await claudeCodeHeadersService.getAccountHeaders(accountId)
-
-      // 只添加客户端没有提供的 headers
-      Object.keys(claudeCodeHeaders).forEach((key) => {
-        const lowerKey = key.toLowerCase()
-        if (!finalHeaders[key] && !finalHeaders[lowerKey]) {
-          finalHeaders[key] = claudeCodeHeaders[key]
-        }
-      })
-    }
+    // 不再需要获取账户信息或 Claude Code headers
 
     return new Promise((resolve, reject) => {
       // 支持自定义路径（如 count_tokens）
@@ -656,33 +544,23 @@ class ClaudeRelayService {
         requestPath = customUrl.pathname
       }
 
+      // 构建固定的请求头集合（严格控制）
       const options = {
         hostname: url.hostname,
         port: url.port || 443,
         path: requestPath,
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          ...claudeConstants.FIXED_HEADERS,
           Authorization: `Bearer ${accessToken}`,
           'anthropic-version': this.apiVersion,
-          ...finalHeaders
+          'User-Agent': claudeConstants.USER_AGENT
         },
         agent: proxyAgent,
         timeout: config.proxy.timeout
       }
 
-      // 使用统一 User-Agent 或客户端提供的，最后使用默认值
-      if (!options.headers['User-Agent'] && !options.headers['user-agent']) {
-        const userAgent =
-          unifiedUA ||
-          clientHeaders?.['user-agent'] ||
-          clientHeaders?.['User-Agent'] ||
-          'claude-cli/1.0.102 (external, cli)'
-        options.headers['User-Agent'] = userAgent
-      }
-
       logger.info(`🔗 指纹是这个: ${options.headers['User-Agent']}`)
-      logger.info(`🔗 指纹是这个: ${options.headers['user-agent']}`)
 
       // 使用自定义的 betaHeader 或默认值
       const betaHeader =
@@ -775,16 +653,18 @@ class ClaudeRelayService {
       })
 
       // Dump最终请求（非流式）
-      requestDumper.dumpFinalRequest({
-        model: body.model,
-        headers: options.headers,
-        body: body,
-        accountId: accountId,
-        proxyInfo: proxyAgent ? { type: 'configured' } : null,
-        sessionHash: sessionHelper.generateSessionHash(body)
-      }).catch(err => {
-        logger.debug('Failed to dump final request:', err.message)
-      })
+      requestDumper
+        .dumpFinalRequest({
+          model: body.model,
+          headers: options.headers,
+          body,
+          accountId,
+          proxyInfo: proxyAgent ? { type: 'configured' } : null,
+          sessionHash: sessionHelper.generateSessionHash(body)
+        })
+        .catch((err) => {
+          logger.debug('Failed to dump final request:', err.message)
+        })
 
       // 写入请求体
       req.write(JSON.stringify(body))
@@ -903,60 +783,28 @@ class ClaudeRelayService {
     streamTransformer = null,
     requestOptions = {}
   ) {
-    // 获取账户信息用于统一 User-Agent
-    const account = await claudeAccountService.getAccount(accountId)
+    // 不再需要获取账户信息
 
-    // 获取统一的 User-Agent
-    const unifiedUA = await this.captureAndGetUnifiedUserAgent(clientHeaders, account)
-
-    // 获取过滤后的客户端 headers
-    const filteredHeaders = this._filterClientHeaders(clientHeaders)
-
-    // 判断是否是真实的 Claude Code 请求
-    const isRealClaudeCode = this.isRealClaudeCodeRequest(body, clientHeaders)
-
-    // 如果不是真实的 Claude Code 请求，需要使用从账户获取的 Claude Code headers
-    const finalHeaders = { ...filteredHeaders }
-
-    if (!isRealClaudeCode) {
-      // 获取该账号存储的 Claude Code headers
-      const claudeCodeHeaders = await claudeCodeHeadersService.getAccountHeaders(accountId)
-
-      // 只添加客户端没有提供的 headers
-      Object.keys(claudeCodeHeaders).forEach((key) => {
-        const lowerKey = key.toLowerCase()
-        if (!finalHeaders[key] && !finalHeaders[lowerKey]) {
-          finalHeaders[key] = claudeCodeHeaders[key]
-        }
-      })
-    }
+    // 不再需要获取统一的 User-Agent 或 Claude Code headers
 
     return new Promise((resolve, reject) => {
       const url = new URL(this.claudeApiUrl)
 
+      // 构建固定的请求头集合（严格控制）- 流式请求
       const options = {
         hostname: url.hostname,
         port: url.port || 443,
         path: url.pathname,
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          ...claudeConstants.FIXED_HEADERS,
+          ...claudeConstants.STREAM_HEADER, // 添加流式请求专用header
           Authorization: `Bearer ${accessToken}`,
           'anthropic-version': this.apiVersion,
-          ...finalHeaders
+          'User-Agent': claudeConstants.USER_AGENT
         },
         agent: proxyAgent,
         timeout: config.proxy.timeout
-      }
-
-      // 使用统一 User-Agent 或客户端提供的，最后使用默认值
-      if (!options.headers['User-Agent'] && !options.headers['user-agent']) {
-        const userAgent =
-          unifiedUA ||
-          clientHeaders?.['user-agent'] ||
-          clientHeaders?.['User-Agent'] ||
-          'claude-cli/1.0.102 (external, cli)'
-        options.headers['User-Agent'] = userAgent
       }
 
       // 使用自定义的 betaHeader 或默认值
@@ -1336,13 +1184,6 @@ class ClaudeRelayService {
             }
 
             // 只有真实的 Claude Code 请求才更新 headers（流式请求）
-            if (
-              clientHeaders &&
-              Object.keys(clientHeaders).length > 0 &&
-              this.isRealClaudeCodeRequest(body, clientHeaders)
-            ) {
-              await claudeCodeHeadersService.storeAccountHeaders(accountId, clientHeaders)
-            }
           }
 
           logger.debug('🌊 Claude stream response with usage capture completed')
@@ -1431,16 +1272,18 @@ class ClaudeRelayService {
       })
 
       // Dump最终请求（流式）
-      requestDumper.dumpFinalRequest({
-        model: body.model,
-        headers: options.headers,
-        body: body,
-        accountId: accountId,
-        proxyInfo: proxyAgent ? { type: 'configured' } : null,
-        sessionHash: sessionHash
-      }).catch(err => {
-        logger.debug('Failed to dump stream final request:', err.message)
-      })
+      requestDumper
+        .dumpFinalRequest({
+          model: body.model,
+          headers: options.headers,
+          body,
+          accountId,
+          proxyInfo: proxyAgent ? { type: 'configured' } : null,
+          sessionHash
+        })
+        .catch((err) => {
+          logger.debug('Failed to dump stream final request:', err.message)
+        })
 
       // 写入请求体
       req.write(JSON.stringify(body))
@@ -1460,32 +1303,23 @@ class ClaudeRelayService {
     return new Promise((resolve, reject) => {
       const url = new URL(this.claudeApiUrl)
 
-      // 获取过滤后的客户端 headers
-      const filteredHeaders = this._filterClientHeaders(clientHeaders)
+      // 不再使用 claudeCodeHeadersService，直接使用固定值
 
+      // 构建固定的请求头集合（严格控制）- 流式请求
       const options = {
         hostname: url.hostname,
         port: url.port || 443,
         path: url.pathname,
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          ...claudeConstants.FIXED_HEADERS,
+          ...claudeConstants.STREAM_HEADER, // 添加流式请求专用header
           Authorization: `Bearer ${accessToken}`,
           'anthropic-version': this.apiVersion,
-          ...filteredHeaders
+          'User-Agent': claudeConstants.USER_AGENT
         },
         agent: proxyAgent,
         timeout: config.proxy.timeout
-      }
-
-      // 如果客户端没有提供 User-Agent，使用默认值
-      if (!filteredHeaders['User-Agent'] && !filteredHeaders['user-agent']) {
-        // 第三个方法不支持统一 User-Agent，使用简化逻辑
-        const userAgent =
-          clientHeaders?.['user-agent'] ||
-          clientHeaders?.['User-Agent'] ||
-          'claude-cli/1.0.102 (external, cli)'
-        options.headers['User-Agent'] = userAgent
       }
 
       // 使用自定义的 betaHeader 或默认值
@@ -1592,16 +1426,18 @@ class ClaudeRelayService {
       })
 
       // Dump最终请求（流式 - _makeClaudeStreamRequest）
-      requestDumper.dumpFinalRequest({
-        model: body.model,
-        headers: options.headers,
-        body: body,
-        accountId: accountId,
-        proxyInfo: proxyAgent ? { type: 'configured' } : null,
-        sessionHash: sessionHelper.generateSessionHash(body)
-      }).catch(err => {
-        logger.debug('Failed to dump stream request:', err.message)
-      })
+      requestDumper
+        .dumpFinalRequest({
+          model: body.model,
+          headers: options.headers,
+          body,
+          accountId: null, // 该方法没有accountId参数
+          proxyInfo: proxyAgent ? { type: 'configured' } : null,
+          sessionHash: sessionHelper.generateSessionHash(body)
+        })
+        .catch((err) => {
+          logger.debug('Failed to dump stream request:', err.message)
+        })
 
       // 写入请求体
       req.write(JSON.stringify(body))

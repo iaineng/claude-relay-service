@@ -4,6 +4,7 @@ const ProxyHelper = require('../utils/proxyHelper')
 const redis = require('../models/redis')
 const logger = require('../utils/logger')
 const config = require('../../config/config')
+const claudeConstants = require('../utils/claudeConstants')
 const LRUCache = require('../utils/lruCache')
 
 class ClaudeConsoleAccountService {
@@ -45,7 +46,7 @@ class ClaudeConsoleAccountService {
       apiKey = '',
       priority = 50, // 默认优先级50（1-100）
       supportedModels = [], // 支持的模型列表或映射表，空数组/对象表示支持所有
-      userAgent = 'claude-cli/1.0.69 (external, cli)',
+      userAgent = claudeConstants.USER_AGENT,
       rateLimitDuration = 60, // 限流时间（分钟）
       proxy = null,
       isActive = true,

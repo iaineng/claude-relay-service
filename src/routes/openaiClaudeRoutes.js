@@ -13,7 +13,6 @@ const claudeRelayService = require('../services/claudeRelayService')
 const openaiToClaude = require('../services/openaiToClaude')
 const apiKeyService = require('../services/apiKeyService')
 const unifiedClaudeScheduler = require('../services/unifiedClaudeScheduler')
-const claudeCodeHeadersService = require('../services/claudeCodeHeadersService')
 const sessionHelper = require('../utils/sessionHelper')
 const requestDumper = require('../utils/requestDumper')
 
@@ -226,13 +225,6 @@ async function handleChatCompletion(req, res, apiKeyData) {
     )
     const { accountId } = accountSelection
 
-    // 获取该账号存储的 Claude Code headers
-    const claudeCodeHeaders = await claudeCodeHeadersService.getAccountHeaders(accountId)
-
-    logger.debug(`📋 Using Claude Code headers for account ${accountId}:`, {
-      userAgent: claudeCodeHeaders['user-agent']
-    })
-
     // 处理流式请求
     if (claudeRequest.stream) {
       logger.info(`🌊 Processing OpenAI stream request for model: ${req.body.model}`)
@@ -259,7 +251,7 @@ async function handleChatCompletion(req, res, apiKeyData) {
         claudeRequest,
         apiKeyData,
         res,
-        claudeCodeHeaders,
+        null, // 不再需要传递 claudeCodeHeaders
         (usage) => {
           // 记录使用统计
           if (usage && usage.input_tokens !== undefined && usage.output_tokens !== undefined) {
@@ -299,7 +291,7 @@ async function handleChatCompletion(req, res, apiKeyData) {
         apiKeyData,
         req,
         res,
-        claudeCodeHeaders,
+        null, // 不再需要传递 claudeCodeHeaders
         { betaHeader: 'oauth-2025-04-20' }
       )
 
