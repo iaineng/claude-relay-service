@@ -660,6 +660,8 @@ class ClaudeRelayService {
 
       if (betaHeader) {
         options.headers['anthropic-beta'] = betaHeader
+        // 如果有 beta header，添加 ?beta=true 查询参数
+        options.path += '?beta=true'
       }
 
       const req = https.request(options, (res) => {
@@ -908,6 +910,8 @@ class ClaudeRelayService {
 
       if (betaHeader) {
         options.headers['anthropic-beta'] = betaHeader
+        // 如果有 beta header，添加 ?beta=true 查询参数
+        options.path += '?beta=true'
       }
 
       const req = https.request(options, (res) => {
@@ -1426,6 +1430,8 @@ class ClaudeRelayService {
 
       if (betaHeader) {
         options.headers['anthropic-beta'] = betaHeader
+        // 如果有 beta header，添加 ?beta=true 查询参数
+        options.path += '?beta=true'
       }
 
       const req = https.request(options, (res) => {
