@@ -56,6 +56,7 @@ class RequestDumper {
       type,
       model,
       timestamp,
+      url,
       accountId,
       apiKey,
       sessionHash,
@@ -68,6 +69,10 @@ class RequestDumper {
     content += `Timestamp: ${new Date(timestamp).toISOString()}\n`
     content += `Type: ${type.toUpperCase()}\n`
     content += `Model: ${model || 'unknown'}\n`
+
+    if (url) {
+      content += `Request URL: ${url}\n`
+    }
 
     if (accountId) {
       content += `Account ID: ${accountId}\n`
@@ -137,7 +142,7 @@ class RequestDumper {
    * @param {Object} params - dump参数
    */
   async dumpOriginalRequest(params) {
-    const { model, headers, body, apiKey, sessionHash } = params
+    const { model, url, headers, body, apiKey, sessionHash } = params
 
     try {
       const modelName = model || body?.model || 'unknown-model'
@@ -149,6 +154,7 @@ class RequestDumper {
         type: 'original',
         model: modelName,
         timestamp: Date.now(),
+        url,
         apiKey,
         sessionHash,
         headers,
@@ -174,7 +180,7 @@ class RequestDumper {
    * @param {Object} params - dump参数
    */
   async dumpFinalRequest(params) {
-    const { model, headers, body, accountId, proxyInfo, sessionHash } = params
+    const { model, url, headers, body, accountId, proxyInfo, sessionHash } = params
 
     try {
       const modelName = model || body?.model || 'unknown-model'
@@ -198,6 +204,7 @@ class RequestDumper {
         type: 'final',
         model: modelName,
         timestamp: Date.now(),
+        url,
         accountId,
         sessionHash,
         headers,

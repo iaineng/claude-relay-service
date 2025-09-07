@@ -192,6 +192,7 @@ async function handleChatCompletion(req, res, apiKeyData) {
     // Dump原始请求
     await requestDumper.dumpOriginalRequest({
       model: req.body.model,
+      url: req.originalUrl,
       headers: req.headers,
       body: req.body,
       apiKey: {

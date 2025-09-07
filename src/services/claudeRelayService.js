@@ -746,9 +746,11 @@ class ClaudeRelayService {
       })
 
       // Dump最终请求（非流式）
+      const finalUrl = `https://${options.hostname}:${options.port || 443}${options.path}`
       requestDumper
         .dumpFinalRequest({
           model: body.model,
+          url: finalUrl,
           headers: options.headers,
           body,
           accountId,
@@ -1366,9 +1368,11 @@ class ClaudeRelayService {
       })
 
       // Dump最终请求（流式）
+      const finalUrl = `https://${options.hostname}:${options.port || 443}${options.path}`
       requestDumper
         .dumpFinalRequest({
           model: body.model,
+          url: finalUrl,
           headers: options.headers,
           body,
           accountId,
@@ -1521,9 +1525,11 @@ class ClaudeRelayService {
       })
 
       // Dump最终请求（流式 - _makeClaudeStreamRequest）
+      const finalUrl = `https://${options.hostname}:${options.port || 443}${options.path}`
       requestDumper
         .dumpFinalRequest({
           model: body.model,
+          url: finalUrl,
           headers: options.headers,
           body,
           accountId: null, // 该方法没有accountId参数
