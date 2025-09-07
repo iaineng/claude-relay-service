@@ -776,6 +776,14 @@ router.post('/v1/messages/count_tokens', authenticateApiKey, async (req, res) =>
 
     logger.info(`🔢 Processing token count request for key: ${req.apiKey.name}`)
 
+    // Dump原始请求（Claude原生API格式）
+    await requestDumper.dumpOriginalRequest({
+      model: req.body.model,
+      url: req.originalUrl,
+      headers: req.headers,
+      body: req.body
+    })
+
     // 生成会话哈希用于sticky会话
     const sessionHash = sessionHelper.generateSessionHash(req.body)
 

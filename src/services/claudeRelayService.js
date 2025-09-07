@@ -187,7 +187,7 @@ class ClaudeRelayService {
       const accessToken = await claudeAccountService.getValidAccessToken(accountId)
 
       // 处理请求体（传递 clientHeaders 以判断是否需要设置 Claude Code 系统提示词）
-      const processedBody = this._processRequestBody(requestBody, clientHeaders)
+      const processedBody = this._processRequestBody(requestBody, clientHeaders, options)
 
       // 获取代理配置
       const proxyAgent = await this._getProxyAgent(accountId)
@@ -407,8 +407,16 @@ class ClaudeRelayService {
   }
 
   // 🔄 处理请求体
-  _processRequestBody(body, clientHeaders = {}) {
+  _processRequestBody(body, clientHeaders = {}, requestOptions = {}) {
     if (!body) {
+      return body
+    }
+
+    // 对于 count_tokens 请求，不进行任何处理，直接返回原始请求体
+    const isCountTokens =
+      requestOptions.customPath && requestOptions.customPath.includes('count_tokens')
+    if (isCountTokens) {
+      logger.debug('🔢 Skipping request body processing for count_tokens endpoint')
       return body
     }
 
@@ -663,12 +671,19 @@ class ClaudeRelayService {
 
       // 使用 BetaHeaderManager 根据模型动态构建 beta header
       const model = body.model || 'unknown'
-      const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
 
-      if (betaHeader) {
-        options.headers['anthropic-beta'] = betaHeader
-        // 如果有 beta header，添加 ?beta=true 查询参数
-        options.path += '?beta=true'
+      // 对于 count_tokens 请求，不添加 beta header 和参数
+      const isCountTokens =
+        requestOptions.customPath && requestOptions.customPath.includes('count_tokens')
+
+      if (!isCountTokens) {
+        const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
+
+        if (betaHeader) {
+          options.headers['anthropic-beta'] = betaHeader
+          // 如果有 beta header，添加 ?beta=true 查询参数
+          options.path += '?beta=true'
+        }
       }
 
       const req = https.request(options, (res) => {
@@ -845,7 +860,7 @@ class ClaudeRelayService {
       const accessToken = await claudeAccountService.getValidAccessToken(accountId)
 
       // 处理请求体（传递 clientHeaders 以判断是否需要设置 Claude Code 系统提示词）
-      const processedBody = this._processRequestBody(requestBody, clientHeaders)
+      const processedBody = this._processRequestBody(requestBody, clientHeaders, options)
 
       // 获取代理配置
       const proxyAgent = await this._getProxyAgent(accountId)
@@ -913,12 +928,19 @@ class ClaudeRelayService {
 
       // 使用 BetaHeaderManager 根据模型动态构建 beta header
       const model = body.model || 'unknown'
-      const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
 
-      if (betaHeader) {
-        options.headers['anthropic-beta'] = betaHeader
-        // 如果有 beta header，添加 ?beta=true 查询参数
-        options.path += '?beta=true'
+      // 对于 count_tokens 请求，不添加 beta header 和参数
+      const isCountTokens =
+        requestOptions.customPath && requestOptions.customPath.includes('count_tokens')
+
+      if (!isCountTokens) {
+        const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
+
+        if (betaHeader) {
+          options.headers['anthropic-beta'] = betaHeader
+          // 如果有 beta header，添加 ?beta=true 查询参数
+          options.path += '?beta=true'
+        }
       }
 
       const req = https.request(options, (res) => {
@@ -1433,12 +1455,19 @@ class ClaudeRelayService {
 
       // 使用 BetaHeaderManager 根据模型动态构建 beta header
       const model = body.model || 'unknown'
-      const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
 
-      if (betaHeader) {
-        options.headers['anthropic-beta'] = betaHeader
-        // 如果有 beta header，添加 ?beta=true 查询参数
-        options.path += '?beta=true'
+      // 对于 count_tokens 请求，不添加 beta header 和参数
+      const isCountTokens =
+        requestOptions.customPath && requestOptions.customPath.includes('count_tokens')
+
+      if (!isCountTokens) {
+        const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
+
+        if (betaHeader) {
+          options.headers['anthropic-beta'] = betaHeader
+          // 如果有 beta header，添加 ?beta=true 查询参数
+          options.path += '?beta=true'
+        }
       }
 
       const req = https.request(options, (res) => {
