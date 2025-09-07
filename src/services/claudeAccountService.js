@@ -533,7 +533,8 @@ class ClaudeAccountService {
         'schedulable',
         'subscriptionInfo',
         'autoStopOnWarning',
-        'useUnifiedUserAgent'
+        'useUnifiedUserAgent',
+        'banMode'
       ]
       const updatedData = { ...accountData }
 
