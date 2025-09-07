@@ -107,7 +107,15 @@ class ClaudeRelayService {
       if (systemItem.text === conversationSummaryPrompt) {
         return true
       }
+
+      // 检查是否是文件路径提取请求
+      const filePathExtractionPrefix = 'Extract any file paths that this command reads or modifies.'
+
+      if (systemItem.text.startsWith(filePathExtractionPrefix)) {
+        return true
+      }
     }
+
 
     return false
   }
