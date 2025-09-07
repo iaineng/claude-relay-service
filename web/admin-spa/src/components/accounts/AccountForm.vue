@@ -1554,8 +1554,11 @@
           </div>
 
           <!-- 封号模式（Claude平台专用） -->
-          <div v-if="form.platform === 'claude'" class="mt-6 rounded-lg border-2 border-red-500 bg-red-50 p-4 dark:border-red-700 dark:bg-red-900/20">
-            <label class="flex items-start cursor-pointer">
+          <div
+            v-if="form.platform === 'claude'"
+            class="mt-6 rounded-lg border-2 border-red-500 bg-red-50 p-4 dark:border-red-700 dark:bg-red-900/20"
+          >
+            <label class="flex cursor-pointer items-start">
               <input
                 v-model="form.banMode"
                 class="mt-1 text-red-600 focus:ring-red-500 dark:text-red-400"
@@ -1569,11 +1572,13 @@
                   ⚠️ 警告：此模式可能会【增加】账号被封禁的风险！
                 </p>
                 <div class="mt-3 space-y-2">
-                  <div class="rounded border border-red-300 bg-red-100 p-2 dark:border-red-700 dark:bg-red-900/50">
-                    <p class="text-xs font-bold text-red-700 dark:text-red-400 mb-1">
+                  <div
+                    class="rounded border border-red-300 bg-red-100 p-2 dark:border-red-700 dark:bg-red-900/50"
+                  >
+                    <p class="mb-1 text-xs font-bold text-red-700 dark:text-red-400">
                       ⛔ 重要风险提示：
                     </p>
-                    <ul class="ml-4 list-disc text-xs text-red-600 dark:text-red-500 space-y-1">
+                    <ul class="ml-4 list-disc space-y-1 text-xs text-red-600 dark:text-red-500">
                       <li><strong>随机化特征可能被识别为异常行为</strong></li>
                       <li><strong>频繁变化的指纹会触发风控系统</strong></li>
                       <li><strong>不一致的请求头可能被判定为自动化工具</strong></li>
@@ -1581,22 +1586,28 @@
                     </ul>
                   </div>
                   <div class="rounded bg-white p-2 dark:bg-gray-800">
-                    <p class="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    <p class="mb-1 text-xs font-semibold text-gray-700 dark:text-gray-300">
                       技术实现（仅供了解）：
                     </p>
-                    <ul class="ml-4 list-disc text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                    <ul class="ml-4 list-disc space-y-1 text-xs text-gray-600 dark:text-gray-400">
                       <li>跳过请求体处理，保持原始请求内容</li>
                       <li>User-Agent 随机化（浏览器/Node/移动端等）</li>
                       <li>系统信息随机化（OS/架构/运行时）</li>
                       <li>每次请求使用完全不同的客户端指纹</li>
                     </ul>
                   </div>
-                  <div class="rounded border border-yellow-300 bg-yellow-100 p-2 dark:border-yellow-700 dark:bg-yellow-900/30">
-                    <div class="flex items-start gap-2 text-xs text-yellow-700 dark:text-yellow-400">
+                  <div
+                    class="rounded border border-yellow-300 bg-yellow-100 p-2 dark:border-yellow-700 dark:bg-yellow-900/30"
+                  >
+                    <div
+                      class="flex items-start gap-2 text-xs text-yellow-700 dark:text-yellow-400"
+                    >
                       <i class="fas fa-info-circle mt-0.5"></i>
                       <div>
                         <p class="font-bold">建议：</p>
-                        <p>除非您完全了解风险并愿意承担后果，否则请勿启用此功能。正常使用建议保持关闭状态。</p>
+                        <p>
+                          除非您完全了解风险并愿意承担后果，否则请勿启用此功能。正常使用建议保持关闭状态。
+                        </p>
                       </div>
                     </div>
                   </div>
