@@ -18,6 +18,46 @@ class ClaudeRelayService {
     this.apiVersion = config.claude.apiVersion
     this.betaHeader = config.claude.betaHeader
     this.systemPrompt = config.claude.systemPrompt
+    this.claudeCodeSystemPrompt = "You are Claude Code, Anthropic's official CLI for Claude."
+  }
+
+  // 🔍 判断是否是真实的 Claude Code 请求
+  isRealClaudeCodeRequest(requestBody, clientHeaders) {
+    // 检查 user-agent 是否匹配 Claude Code 格式
+    const userAgent = clientHeaders?.['user-agent'] || clientHeaders?.['User-Agent'] || ''
+    const isClaudeCodeUserAgent = /^claude-cli\/[\d.]+\s+\(/i.test(userAgent)
+
+    // 检查系统提示词是否包含 Claude Code 标识
+    const hasClaudeCodeSystemPrompt = this._hasClaudeCodeSystemPrompt(requestBody)
+
+    // 只有当 user-agent 匹配且系统提示词正确时，才认为是真实的 Claude Code 请求
+    return isClaudeCodeUserAgent && hasClaudeCodeSystemPrompt
+  }
+
+  // 🔍 检查请求中是否包含 Claude Code 系统提示词
+  _hasClaudeCodeSystemPrompt(requestBody) {
+    if (!requestBody || !requestBody.system) {
+      return false
+    }
+
+    // 如果是字符串格式，一定不是真实的 Claude Code 请求
+    if (typeof requestBody.system === 'string') {
+      return false
+    }
+
+    // 处理数组格式
+    if (Array.isArray(requestBody.system) && requestBody.system.length > 0) {
+      const firstItem = requestBody.system[0]
+      // 检查第一个元素是否包含 Claude Code 提示词
+      return (
+        firstItem &&
+        firstItem.type === 'text' &&
+        firstItem.text &&
+        firstItem.text === this.claudeCodeSystemPrompt
+      )
+    }
+
+    return false
   }
 
   // 🚀 转发请求到Claude API
