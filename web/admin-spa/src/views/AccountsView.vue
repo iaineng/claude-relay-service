@@ -247,13 +247,20 @@
                     <i class="fas fa-user-circle text-xs text-white" />
                   </div>
                   <div class="min-w-0">
-                    <div class="flex items-center gap-2">
-                      <div
-                        class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100"
-                        :title="account.name"
-                      >
-                        {{ account.name }}
-                      </div>
+                    <div
+                      class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100"
+                      :title="account.name"
+                    >
+                      {{ account.name }}
+                    </div>
+                    <div
+                      class="truncate text-xs text-gray-500 dark:text-gray-400"
+                      :title="account.id"
+                    >
+                      {{ account.description || account.id }}
+                    </div>
+                    <!-- 标签移到描述下方 -->
+                    <div class="mt-1 flex flex-wrap items-center gap-1">
                       <span
                         v-if="account.accountType === 'dedicated'"
                         class="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800"
@@ -285,17 +292,11 @@
                       <span
                         v-for="group in account.groupInfos"
                         :key="group.id"
-                        class="ml-1 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-400"
+                        class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-400"
                         :title="`所属分组: ${group.name}`"
                       >
                         <i class="fas fa-folder mr-1" />{{ group.name }}
                       </span>
-                    </div>
-                    <div
-                      class="truncate text-xs text-gray-500 dark:text-gray-400"
-                      :title="account.id"
-                    >
-                      {{ account.description || account.id }}
                     </div>
                   </div>
                 </div>
