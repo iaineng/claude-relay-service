@@ -146,19 +146,13 @@ class ClaudeConsoleRelayService {
 
       // 使用 BetaHeaderManager 根据模型动态构建 beta header
       const model = mappedModel || requestBody.model || 'unknown'
+      const betaHeader = BetaHeaderManager.getBetaHeader(model, options, clientHeaders)
 
-      // 对于 count_tokens 请求，不添加 beta header
-      const isCountTokens = options.customPath && options.customPath.includes('count_tokens')
-
-      if (!isCountTokens) {
-        const betaHeader = BetaHeaderManager.getBetaHeader(model, options, clientHeaders)
-
-        if (betaHeader) {
-          logger.debug(`[DEBUG] Adding beta header: ${betaHeader}`)
-          requestConfig.headers['anthropic-beta'] = betaHeader
-        } else {
-          logger.debug('[DEBUG] No beta header to add')
-        }
+      if (betaHeader) {
+        logger.debug(`[DEBUG] Adding beta header: ${betaHeader}`)
+        requestConfig.headers['anthropic-beta'] = betaHeader
+      } else {
+        logger.debug('[DEBUG] No beta header to add')
       }
 
       // 发送请求
@@ -375,17 +369,10 @@ class ClaudeConsoleRelayService {
 
       // 使用 BetaHeaderManager 根据模型动态构建 beta header
       const model = body.model || 'unknown' // body 是 _makeClaudeConsoleStreamRequest 的参数
+      const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
 
-      // 对于 count_tokens 请求，不添加 beta header
-      const isCountTokens =
-        requestOptions.customPath && requestOptions.customPath.includes('count_tokens')
-
-      if (!isCountTokens) {
-        const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
-
-        if (betaHeader) {
-          requestConfig.headers['anthropic-beta'] = betaHeader
-        }
+      if (betaHeader) {
+        requestConfig.headers['anthropic-beta'] = betaHeader
       }
 
       // 发送请求

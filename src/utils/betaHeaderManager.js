@@ -25,6 +25,10 @@ class BetaHeaderManager {
     },
     'fine-grained-tool-streaming-2025-05-14': {
       alwaysInclude: true
+    },
+    // token-counting-2024-11-01 对所有模型生效，但只在 count_tokens 请求时添加
+    'token-counting-2024-11-01': {
+      alwaysInclude: true
     }
   }
 
@@ -36,7 +40,8 @@ class BetaHeaderManager {
     'oauth-2025-04-20', // 第二位
     'interleaved-thinking-2025-05-14', // 第三位
     'fine-grained-tool-streaming-2025-05-14', // 第四位
-    'context-1m-2025-08-07' // 第五位
+    'context-1m-2025-08-07', // 第五位
+    'token-counting-2024-11-01' // 第六位（最后）
   ]
 
   /**
@@ -44,9 +49,10 @@ class BetaHeaderManager {
    * @param {string} model - 模型名称
    * @param {string} baseBetaHeader - 基础 beta header (可能来自配置)
    * @param {string} clientBetaHeader - 客户端请求的 beta header
+   * @param {object} requestOptions - 请求选项，可能包含 customPath
    * @returns {string|null} 构建好的 beta header 字符串
    */
-  static buildBetaHeader(model, baseBetaHeader = '', clientBetaHeader = '') {
+  static buildBetaHeader(model, baseBetaHeader = '', clientBetaHeader = '', requestOptions = {}) {
     const features = new Set()
 
     // 解析基础 beta header
@@ -63,6 +69,14 @@ class BetaHeaderManager {
     if (clientBetaHeader && clientBetaHeader.includes('context-1m-2025-08-07')) {
       features.add('context-1m-2025-08-07')
       logger.info('📌 Adding context-1m-2025-08-07 from client request')
+    }
+
+    // 检查是否是 count_tokens 请求，如果是则添加 token-counting-2024-11-01
+    const isCountTokens =
+      requestOptions.customPath && requestOptions.customPath.includes('count_tokens')
+    if (isCountTokens) {
+      features.add('token-counting-2024-11-01')
+      logger.debug('🔢 Adding token-counting-2024-11-01 for count_tokens request')
     }
 
     // 按照固定顺序排列 features
@@ -149,8 +163,8 @@ class BetaHeaderManager {
     // 获取客户端的 beta header
     const clientBetaHeader = clientHeaders?.['anthropic-beta'] || ''
 
-    // 构建最终的 beta header
-    return this.buildBetaHeader(model, baseBetaHeader, clientBetaHeader)
+    // 构建最终的 beta header，传递 requestOptions 以检测 count_tokens 请求
+    return this.buildBetaHeader(model, baseBetaHeader, clientBetaHeader, requestOptions)
   }
 }
 
