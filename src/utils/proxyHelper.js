@@ -8,6 +8,9 @@ const config = require('../../config/config')
  * 支持 SOCKS5 和 HTTP/HTTPS 代理，可配置 IPv4/IPv6
  */
 class ProxyHelper {
+  static agentCache = new Map()
+  static cacheStats = { hits: 0, misses: 0 }
+
   /**
    * 创建代理 Agent
    * @param {object|string|null} proxyConfig - 代理配置对象或 JSON 字符串
@@ -30,6 +33,19 @@ class ProxyHelper {
         return null
       }
 
+      // 生成缓存键
+      const cacheKey = `${proxy.type}://${proxy.host}:${proxy.port}:${proxy.username || ''}`
+
+      // 尝试从缓存获取
+      if (ProxyHelper.agentCache.has(cacheKey)) {
+        ProxyHelper.cacheStats.hits++
+        const cachedAgent = ProxyHelper.agentCache.get(cacheKey)
+        logger.debug(
+          `🎯 Proxy agent cache hit [${ProxyHelper.cacheStats.hits}/${ProxyHelper.cacheStats.hits + ProxyHelper.cacheStats.misses}]`
+        )
+        return cachedAgent
+      }
+
       // 获取 IPv4/IPv6 配置
       const useIPv4 = ProxyHelper._getIPFamilyPreference(options.useIPv4)
 
@@ -37,11 +53,13 @@ class ProxyHelper {
       const auth = proxy.username && proxy.password ? `${proxy.username}:${proxy.password}@` : ''
 
       // 根据代理类型创建 Agent
+      let agent = null
+
       if (proxy.type === 'socks5') {
         const socksUrl = `socks5://${auth}${proxy.host}:${proxy.port}`
         const socksOptions = {
           keepAlive: true,
-          keepAliveMsecs: 1000,
+          keepAliveMsecs: 30000, // 30秒心跳
           maxSockets: 50,
           maxFreeSockets: 10,
           timeout: 30000
@@ -52,12 +70,13 @@ class ProxyHelper {
           socksOptions.family = useIPv4 ? 4 : 6
         }
 
-        return new SocksProxyAgent(socksUrl, socksOptions)
+        agent = new SocksProxyAgent(socksUrl, socksOptions)
       } else if (proxy.type === 'http' || proxy.type === 'https') {
         const proxyUrl = `${proxy.type}://${auth}${proxy.host}:${proxy.port}`
+
         const httpOptions = {
           keepAlive: true,
-          keepAliveMsecs: 1000,
+          keepAliveMsecs: 30000, // 30秒心跳
           maxSockets: 50,
           maxFreeSockets: 10,
           timeout: 30000
@@ -68,11 +87,22 @@ class ProxyHelper {
           httpOptions.family = useIPv4 ? 4 : 6
         }
 
-        return new HttpsProxyAgent(proxyUrl, httpOptions)
+        agent = new HttpsProxyAgent(proxyUrl, httpOptions)
       } else {
         logger.warn(`⚠️ Unsupported proxy type: ${proxy.type}`)
         return null
       }
+
+      // 添加到缓存
+      if (agent) {
+        ProxyHelper.agentCache.set(cacheKey, agent)
+        ProxyHelper.cacheStats.misses++
+        logger.info(
+          `✨ Created and cached new proxy agent [Cache size: ${ProxyHelper.agentCache.size}]`
+        )
+      }
+
+      return agent
     } catch (error) {
       logger.warn('⚠️ Failed to create proxy agent:', error.message)
       return null
@@ -205,6 +235,33 @@ class ProxyHelper {
       return proxyDesc
     } catch (error) {
       return 'Invalid proxy config'
+    }
+  }
+
+  /**
+   * 清理代理缓存
+   * @param {boolean} force - 是否强制清理所有缓存
+   */
+  static clearCache(force = false) {
+    if (force) {
+      const { size } = ProxyHelper.agentCache
+      ProxyHelper.agentCache.clear()
+      ProxyHelper.cacheStats = { hits: 0, misses: 0 }
+      logger.info(`🧹 Cleared ${size} cached proxy agents`)
+    }
+  }
+
+  /**
+   * 获取缓存统计信息
+   * @returns {object} 缓存统计
+   */
+  static getCacheStats() {
+    const total = ProxyHelper.cacheStats.hits + ProxyHelper.cacheStats.misses
+    return {
+      cacheSize: ProxyHelper.agentCache.size,
+      hits: ProxyHelper.cacheStats.hits,
+      misses: ProxyHelper.cacheStats.misses,
+      hitRate: total > 0 ? `${((ProxyHelper.cacheStats.hits / total) * 100).toFixed(2)}%` : '0%'
     }
   }
 
