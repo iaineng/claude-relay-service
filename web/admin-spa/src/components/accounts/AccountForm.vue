@@ -3475,6 +3475,7 @@ watch(
         subscriptionType: subscriptionType,
         autoStopOnWarning: newAccount.autoStopOnWarning || false,
         useUnifiedUserAgent: newAccount.useUnifiedUserAgent || false,
+        banMode: newAccount.banMode || false,
         groupId: groupId,
         groupIds: [],
         projectId: newAccount.projectId || '',
