@@ -3,6 +3,7 @@ const claudeConsoleAccountService = require('./claudeConsoleAccountService')
 const logger = require('../utils/logger')
 const config = require('../../config/config')
 const claudeConstants = require('../utils/claudeConstants')
+const BetaHeaderManager = require('../utils/betaHeaderManager')
 
 class ClaudeConsoleRelayService {
   constructor() {
@@ -143,10 +144,13 @@ class ClaudeConsoleRelayService {
         `[DEBUG] Initial headers before beta: ${JSON.stringify(requestConfig.headers, null, 2)}`
       )
 
-      // 添加beta header如果需要
-      if (options.betaHeader) {
-        logger.debug(`[DEBUG] Adding beta header: ${options.betaHeader}`)
-        requestConfig.headers['anthropic-beta'] = options.betaHeader
+      // 使用 BetaHeaderManager 根据模型动态构建 beta header
+      const model = mappedModel || requestBody.model || 'unknown'
+      const betaHeader = BetaHeaderManager.getBetaHeader(model, options, clientHeaders)
+
+      if (betaHeader) {
+        logger.debug(`[DEBUG] Adding beta header: ${betaHeader}`)
+        requestConfig.headers['anthropic-beta'] = betaHeader
       } else {
         logger.debug('[DEBUG] No beta header to add')
       }
@@ -363,9 +367,12 @@ class ClaudeConsoleRelayService {
         logger.debug('[DEBUG] Using Authorization Bearer authentication')
       }
 
-      // 添加beta header如果需要
-      if (requestOptions.betaHeader) {
-        requestConfig.headers['anthropic-beta'] = requestOptions.betaHeader
+      // 使用 BetaHeaderManager 根据模型动态构建 beta header
+      const model = body.model || 'unknown' // body 是 _makeClaudeConsoleStreamRequest 的参数
+      const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
+
+      if (betaHeader) {
+        requestConfig.headers['anthropic-beta'] = betaHeader
       }
 
       // 发送请求

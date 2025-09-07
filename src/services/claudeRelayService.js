@@ -11,6 +11,7 @@ const config = require('../../config/config')
 const claudeConstants = require('../utils/claudeConstants')
 const redis = require('../models/redis')
 const requestDumper = require('../utils/requestDumper')
+const BetaHeaderManager = require('../utils/betaHeaderManager')
 
 class ClaudeRelayService {
   constructor() {
@@ -653,9 +654,10 @@ class ClaudeRelayService {
 
       logger.info(`🔗 指纹是这个: ${options.headers['User-Agent']}`)
 
-      // 使用自定义的 betaHeader 或默认值
-      const betaHeader =
-        requestOptions?.betaHeader !== undefined ? requestOptions.betaHeader : this.betaHeader
+      // 使用 BetaHeaderManager 根据模型动态构建 beta header
+      const model = body.model || 'unknown'
+      const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
+
       if (betaHeader) {
         options.headers['anthropic-beta'] = betaHeader
       }
@@ -898,9 +900,10 @@ class ClaudeRelayService {
         timeout: config.proxy.timeout
       }
 
-      // 使用自定义的 betaHeader 或默认值
-      const betaHeader =
-        requestOptions?.betaHeader !== undefined ? requestOptions.betaHeader : this.betaHeader
+      // 使用 BetaHeaderManager 根据模型动态构建 beta header
+      const model = body.model || 'unknown'
+      const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
+
       if (betaHeader) {
         options.headers['anthropic-beta'] = betaHeader
       }
@@ -1413,9 +1416,10 @@ class ClaudeRelayService {
         timeout: config.proxy.timeout
       }
 
-      // 使用自定义的 betaHeader 或默认值
-      const betaHeader =
-        requestOptions?.betaHeader !== undefined ? requestOptions.betaHeader : this.betaHeader
+      // 使用 BetaHeaderManager 根据模型动态构建 beta header
+      const model = body.model || 'unknown'
+      const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
+
       if (betaHeader) {
         options.headers['anthropic-beta'] = betaHeader
       }

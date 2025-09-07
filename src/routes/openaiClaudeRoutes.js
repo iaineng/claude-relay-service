@@ -251,7 +251,7 @@ async function handleChatCompletion(req, res, apiKeyData) {
         claudeRequest,
         apiKeyData,
         res,
-        null, // 不再需要传递 claudeCodeHeaders
+        req.headers,
         (usage) => {
           // 记录使用统计
           if (usage && usage.input_tokens !== undefined && usage.output_tokens !== undefined) {
@@ -275,11 +275,7 @@ async function handleChatCompletion(req, res, apiKeyData) {
           // 为每个请求创建独立的会话ID
           const sessionId = `chatcmpl-${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`
           return (chunk) => openaiToClaude.convertStreamChunk(chunk, req.body.model, sessionId)
-        })(),
-        {
-          betaHeader:
-            'oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14'
-        }
+        })()
       )
     } else {
       // 非流式请求
@@ -291,8 +287,7 @@ async function handleChatCompletion(req, res, apiKeyData) {
         apiKeyData,
         req,
         res,
-        null, // 不再需要传递 claudeCodeHeaders
-        { betaHeader: 'oauth-2025-04-20' }
+        req.headers
       )
 
       // 解析 Claude 响应
