@@ -286,7 +286,7 @@
                       class="truncate text-xs text-gray-500 dark:text-gray-400"
                       :title="account.id"
                     >
-                      {{ account.id }}
+                      {{ account.description || account.id }}
                     </div>
                   </div>
                 </div>
