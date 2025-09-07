@@ -39,7 +39,13 @@ class ProxyHelper {
       // 根据代理类型创建 Agent
       if (proxy.type === 'socks5') {
         const socksUrl = `socks5://${auth}${proxy.host}:${proxy.port}`
-        const socksOptions = {}
+        const socksOptions = {
+          keepAlive: true,
+          keepAliveMsecs: 1000,
+          maxSockets: 50,
+          maxFreeSockets: 10,
+          timeout: 30000
+        }
 
         // 设置 IP 协议族（如果指定）
         if (useIPv4 !== null) {
@@ -49,7 +55,13 @@ class ProxyHelper {
         return new SocksProxyAgent(socksUrl, socksOptions)
       } else if (proxy.type === 'http' || proxy.type === 'https') {
         const proxyUrl = `${proxy.type}://${auth}${proxy.host}:${proxy.port}`
-        const httpOptions = {}
+        const httpOptions = {
+          keepAlive: true,
+          keepAliveMsecs: 1000,
+          maxSockets: 50,
+          maxFreeSockets: 10,
+          timeout: 30000
+        }
 
         // HttpsProxyAgent 支持 family 参数（通过底层的 agent-base）
         if (useIPv4 !== null) {
