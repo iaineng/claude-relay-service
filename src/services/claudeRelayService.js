@@ -23,6 +23,11 @@ class ClaudeRelayService {
 
   // 🔍 判断是否是真实的 Claude Code 请求
   isRealClaudeCodeRequest(requestBody, clientHeaders) {
+    // 检查是否是特殊的 Claude Code 请求（新对话主题分析、Bash 命令处理等）
+    if (this._isSpecialClaudeCodeRequest(requestBody)) {
+      return true
+    }
+
     // 检查 user-agent 是否匹配 Claude Code 格式
     const userAgent = clientHeaders?.['user-agent'] || clientHeaders?.['User-Agent'] || ''
     const isClaudeCodeUserAgent = /^claude-cli\/[\d.]+\s+\(/i.test(userAgent)
@@ -55,6 +60,52 @@ class ClaudeRelayService {
         firstItem.text &&
         firstItem.text === this.claudeCodeSystemPrompt
       )
+    }
+
+    return false
+  }
+
+  // 🔍 检查是否是特殊的 Claude Code 请求（新对话主题分析、Bash 命令处理等）
+  _isSpecialClaudeCodeRequest(requestBody) {
+    if (!requestBody) {
+      return false
+    }
+
+    // 系统字段必须是数组格式，且只包含一个元素
+    if (!Array.isArray(requestBody.system) || requestBody.system.length !== 1) {
+      return false
+    }
+
+    const systemItem = requestBody.system[0]
+    if (!systemItem || systemItem.type !== 'text' || !systemItem.text) {
+      return false
+    }
+
+    // 只有特定的 haiku 模型才检查特殊请求
+    if (requestBody.model === 'claude-3-5-haiku-20241022') {
+      // 检查是否是新对话主题分析请求
+      const newTopicAnalysisPrompt =
+        "Analyze if this message indicates a new conversation topic. If it does, extract a 2-3 word title that captures the new topic. Format your response as a JSON object with two fields: 'isNewTopic' (boolean) and 'title' (string, or null if isNewTopic is false). Only include these fields, no other text."
+
+      if (systemItem.text === newTopicAnalysisPrompt) {
+        return true
+      }
+
+      // 检查是否是 Bash 命令处理请求
+      const bashCommandProcessingPrefix =
+        'Your task is to process Bash commands that an AI coding agent wants to run.\n\nThis policy spec defines how to determine the prefix of a Bash command:'
+
+      if (systemItem.text.startsWith(bashCommandProcessingPrefix)) {
+        return true
+      }
+
+      // 检查是否是对话总结请求
+      const conversationSummaryPrompt =
+        'Summarize this coding conversation in under 50 characters.\nCapture the main task, key files, problems addressed, and current status.'
+
+      if (systemItem.text === conversationSummaryPrompt) {
+        return true
+      }
     }
 
     return false
