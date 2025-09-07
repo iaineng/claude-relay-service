@@ -2014,7 +2014,8 @@ router.post('/claude-accounts', authenticateAdmin, async (req, res) => {
       groupId,
       groupIds,
       autoStopOnWarning,
-      useUnifiedUserAgent
+      useUnifiedUserAgent,
+      banMode
     } = req.body
 
     if (!name) {
@@ -2055,7 +2056,8 @@ router.post('/claude-accounts', authenticateAdmin, async (req, res) => {
       platform,
       priority: priority || 50, // 默认优先级为50
       autoStopOnWarning: autoStopOnWarning === true, // 默认为false
-      useUnifiedUserAgent: useUnifiedUserAgent === true // 默认为false
+      useUnifiedUserAgent: useUnifiedUserAgent === true, // 默认为false
+      banMode: banMode === true // 封号模式，默认为false
     })
 
     // 如果是分组类型，将账户添加到分组

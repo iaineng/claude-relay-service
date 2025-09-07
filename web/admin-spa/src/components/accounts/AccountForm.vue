@@ -1553,6 +1553,58 @@
             </label>
           </div>
 
+          <!-- 封号模式（Claude平台专用） -->
+          <div v-if="form.platform === 'claude'" class="mt-6 rounded-lg border-2 border-red-500 bg-red-50 p-4 dark:border-red-700 dark:bg-red-900/20">
+            <label class="flex items-start cursor-pointer">
+              <input
+                v-model="form.banMode"
+                class="mt-1 text-red-600 focus:ring-red-500 dark:text-red-400"
+                type="checkbox"
+              />
+              <div class="ml-3 flex-1">
+                <span class="text-sm font-bold text-red-700 dark:text-red-400">
+                  🚨 启用封号模式（实验性功能 - 高风险）
+                </span>
+                <p class="mt-1 text-xs font-bold text-red-600 dark:text-red-500">
+                  ⚠️ 警告：此模式可能会【增加】账号被封禁的风险！
+                </p>
+                <div class="mt-3 space-y-2">
+                  <div class="rounded border border-red-300 bg-red-100 p-2 dark:border-red-700 dark:bg-red-900/50">
+                    <p class="text-xs font-bold text-red-700 dark:text-red-400 mb-1">
+                      ⛔ 重要风险提示：
+                    </p>
+                    <ul class="ml-4 list-disc text-xs text-red-600 dark:text-red-500 space-y-1">
+                      <li><strong>随机化特征可能被识别为异常行为</strong></li>
+                      <li><strong>频繁变化的指纹会触发风控系统</strong></li>
+                      <li><strong>不一致的请求头可能被判定为自动化工具</strong></li>
+                      <li><strong>可能导致账号被立即封禁</strong></li>
+                    </ul>
+                  </div>
+                  <div class="rounded bg-white p-2 dark:bg-gray-800">
+                    <p class="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                      技术实现（仅供了解）：
+                    </p>
+                    <ul class="ml-4 list-disc text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                      <li>跳过请求体处理，保持原始请求内容</li>
+                      <li>User-Agent 随机化（浏览器/Node/移动端等）</li>
+                      <li>系统信息随机化（OS/架构/运行时）</li>
+                      <li>每次请求使用完全不同的客户端指纹</li>
+                    </ul>
+                  </div>
+                  <div class="rounded border border-yellow-300 bg-yellow-100 p-2 dark:border-yellow-700 dark:bg-yellow-900/30">
+                    <div class="flex items-start gap-2 text-xs text-yellow-700 dark:text-yellow-400">
+                      <i class="fas fa-info-circle mt-0.5"></i>
+                      <div>
+                        <p class="font-bold">建议：</p>
+                        <p>除非您完全了解风险并愿意承担后果，否则请勿启用此功能。正常使用建议保持关闭状态。</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </label>
+          </div>
+
           <!-- 所有平台的优先级设置（编辑模式） -->
           <div>
             <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
@@ -2193,6 +2245,7 @@ const form = ref({
   subscriptionType: 'claude_max', // 默认为 Claude Max，兼容旧数据
   autoStopOnWarning: props.account?.autoStopOnWarning || false, // 5小时限制自动停止调度
   useUnifiedUserAgent: props.account?.useUnifiedUserAgent || false, // 使用统一Claude Code版本
+  banMode: props.account?.banMode || false, // 封号模式
   groupId: '',
   groupIds: [],
   projectId: props.account?.projectId || '',
@@ -2513,6 +2566,7 @@ const handleOAuthSuccess = async (tokenInfo) => {
       data.priority = form.value.priority || 50
       data.autoStopOnWarning = form.value.autoStopOnWarning || false
       data.useUnifiedUserAgent = form.value.useUnifiedUserAgent || false
+      data.banMode = form.value.banMode || false
       // 添加订阅类型信息
       data.subscriptionInfo = {
         accountType: form.value.subscriptionType || 'claude_max',
@@ -2706,6 +2760,7 @@ const createAccount = async () => {
       data.priority = form.value.priority || 50
       data.autoStopOnWarning = form.value.autoStopOnWarning || false
       data.useUnifiedUserAgent = form.value.useUnifiedUserAgent || false
+      data.banMode = form.value.banMode || false
       // 添加订阅类型信息
       data.subscriptionInfo = {
         accountType: form.value.subscriptionType || 'claude_max',
@@ -2975,6 +3030,7 @@ const updateAccount = async () => {
       data.priority = form.value.priority || 50
       data.autoStopOnWarning = form.value.autoStopOnWarning || false
       data.useUnifiedUserAgent = form.value.useUnifiedUserAgent || false
+      data.banMode = form.value.banMode || false
       // 更新订阅类型信息
       data.subscriptionInfo = {
         accountType: form.value.subscriptionType || 'claude_max',

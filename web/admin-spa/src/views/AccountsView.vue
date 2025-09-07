@@ -272,6 +272,15 @@
                       >
                         <i class="fas fa-share-alt mr-1" />共享
                       </span>
+                      <!-- 封号模式标识 -->
+                      <span
+                        v-if="account.banMode === true || account.banMode === 'true'"
+                        class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800 dark:bg-red-900/50 dark:text-red-400"
+                        title="封号模式已启用"
+                      >
+                        <i class="fas fa-shield-alt mr-1"></i>
+                        封号模式
+                      </span>
                       <!-- 显示所有分组 -->
                       <span
                         v-for="group in account.groupInfos"

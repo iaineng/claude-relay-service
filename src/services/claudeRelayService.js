@@ -12,6 +12,7 @@ const claudeConstants = require('../utils/claudeConstants')
 const redis = require('../models/redis')
 const requestDumper = require('../utils/requestDumper')
 const BetaHeaderManager = require('../utils/betaHeaderManager')
+const randomHeaderGenerator = require('../utils/randomHeaderGenerator')
 
 class ClaudeRelayService {
   constructor() {
@@ -186,8 +187,19 @@ class ClaudeRelayService {
       // 获取有效的访问token
       const accessToken = await claudeAccountService.getValidAccessToken(accountId)
 
-      // 处理请求体（传递 clientHeaders 以判断是否需要设置 Claude Code 系统提示词）
-      const processedBody = this._processRequestBody(requestBody, clientHeaders, options)
+      // 获取账户信息以检查banMode
+      const account = await claudeAccountService.getAccount(accountId)
+
+      // 处理请求体（封号模式下跳过处理）
+      let processedBody
+      if (account && account.banMode === true) {
+        // 🔐 封号模式：跳过请求体处理，保持原始请求
+        processedBody = requestBody
+        logger.info('🔐 Ban mode: Skipping request body processing')
+      } else {
+        // 正常模式：处理请求体（传递 clientHeaders 以判断是否需要设置 Claude Code 系统提示词）
+        processedBody = this._processRequestBody(requestBody, clientHeaders, options)
+      }
 
       // 获取代理配置
       const proxyAgent = await this._getProxyAgent(accountId)
@@ -640,7 +652,8 @@ class ClaudeRelayService {
   ) {
     const url = new URL(this.claudeApiUrl)
 
-    // 不再需要获取账户信息或 Claude Code headers
+    // 获取账户信息以检查banMode状态
+    const account = await claudeAccountService.getAccount(accountId)
 
     return new Promise((resolve, reject) => {
       // 支持自定义路径（如 count_tokens）
@@ -665,6 +678,25 @@ class ClaudeRelayService {
         },
         agent: proxyAgent,
         timeout: config.proxy.timeout
+      }
+
+      // 🔐 封号模式：使用随机请求头
+      if (account && account.banMode === true) {
+        const randomHeaders = randomHeaderGenerator.generate()
+
+        // 替换可识别的请求头
+        options.headers['User-Agent'] = randomHeaders.userAgent
+        options.headers['x-stainless-package-version'] = randomHeaders.packageVersion
+        options.headers['x-stainless-os'] = randomHeaders.os
+        options.headers['x-stainless-arch'] = randomHeaders.arch
+        options.headers['x-stainless-runtime'] = randomHeaders.runtime
+        options.headers['x-stainless-runtime-version'] = randomHeaders.runtimeVersion
+
+        logger.info('🔐 Ban mode activated - Using randomized headers', {
+          userAgent: randomHeaders.userAgent,
+          runtime: randomHeaders.runtime,
+          os: randomHeaders.os
+        })
       }
 
       logger.info(`🔗 指纹是这个: ${options.headers['User-Agent']}`)
@@ -852,8 +884,19 @@ class ClaudeRelayService {
       // 获取有效的访问token
       const accessToken = await claudeAccountService.getValidAccessToken(accountId)
 
-      // 处理请求体（传递 clientHeaders 以判断是否需要设置 Claude Code 系统提示词）
-      const processedBody = this._processRequestBody(requestBody, clientHeaders, options)
+      // 获取账户信息以检查banMode
+      const account = await claudeAccountService.getAccount(accountId)
+
+      // 处理请求体（封号模式下跳过处理）
+      let processedBody
+      if (account && account.banMode === true) {
+        // 🔐 封号模式：跳过请求体处理，保持原始请求
+        processedBody = requestBody
+        logger.info('🔐 [Stream] Ban mode: Skipping request body processing')
+      } else {
+        // 正常模式：处理请求体（传递 clientHeaders 以判断是否需要设置 Claude Code 系统提示词）
+        processedBody = this._processRequestBody(requestBody, clientHeaders, options)
+      }
 
       // 获取代理配置
       const proxyAgent = await this._getProxyAgent(accountId)
@@ -895,9 +938,8 @@ class ClaudeRelayService {
     streamTransformer = null,
     requestOptions = {}
   ) {
-    // 不再需要获取账户信息
-
-    // 不再需要获取统一的 User-Agent 或 Claude Code headers
+    // 获取账户信息以检查banMode状态
+    const account = await claudeAccountService.getAccount(accountId)
 
     return new Promise((resolve, reject) => {
       const url = new URL(this.claudeApiUrl)
@@ -917,6 +959,25 @@ class ClaudeRelayService {
         },
         agent: proxyAgent,
         timeout: config.proxy.timeout
+      }
+
+      // 🔐 封号模式：使用随机请求头（流式请求）
+      if (account && account.banMode === true) {
+        const randomHeaders = randomHeaderGenerator.generate()
+
+        // 替换可识别的请求头
+        options.headers['User-Agent'] = randomHeaders.userAgent
+        options.headers['x-stainless-package-version'] = randomHeaders.packageVersion
+        options.headers['x-stainless-os'] = randomHeaders.os
+        options.headers['x-stainless-arch'] = randomHeaders.arch
+        options.headers['x-stainless-runtime'] = randomHeaders.runtime
+        options.headers['x-stainless-runtime-version'] = randomHeaders.runtimeVersion
+
+        logger.info('🔐 [Stream] Ban mode activated - Using randomized headers', {
+          userAgent: randomHeaders.userAgent,
+          runtime: randomHeaders.runtime,
+          os: randomHeaders.os
+        })
       }
 
       // 使用 BetaHeaderManager 根据模型动态构建 beta header

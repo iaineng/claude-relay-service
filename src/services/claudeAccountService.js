@@ -61,7 +61,8 @@ class ClaudeAccountService {
       schedulable = true, // 是否可被调度
       subscriptionInfo = null, // 手动设置的订阅信息
       autoStopOnWarning = false, // 5小时使用量接近限制时自动停止调度
-      useUnifiedUserAgent = false // 是否使用统一Claude Code版本的User-Agent
+      useUnifiedUserAgent = false, // 是否使用统一Claude Code版本的User-Agent
+      banMode = false // 封号模式
     } = options
 
     const accountId = uuidv4()
@@ -94,6 +95,7 @@ class ClaudeAccountService {
         schedulable: schedulable.toString(), // 是否可被调度
         autoStopOnWarning: autoStopOnWarning.toString(), // 5小时使用量接近限制时自动停止调度
         useUnifiedUserAgent: useUnifiedUserAgent.toString(), // 是否使用统一Claude Code版本的User-Agent
+        banMode: banMode.toString(), // 封号模式
         // 优先使用手动设置的订阅信息，否则使用OAuth数据中的，否则默认为空
         subscriptionInfo: subscriptionInfo
           ? JSON.stringify(subscriptionInfo)
@@ -493,6 +495,8 @@ class ClaudeAccountService {
             autoStopOnWarning: account.autoStopOnWarning === 'true', // 默认为false
             // 添加统一User-Agent设置
             useUnifiedUserAgent: account.useUnifiedUserAgent === 'true', // 默认为false
+            // 添加封号模式设置
+            banMode: account.banMode === 'true', // 默认为false
             // 添加停止原因
             stoppedReason: account.stoppedReason || null
           }
