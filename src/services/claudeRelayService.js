@@ -200,7 +200,8 @@ class ClaudeRelayService {
       } else {
         // 正常模式：处理请求体（传递 clientHeaders 以判断是否需要设置 Claude Code 系统提示词）
         // 检查是否是 count_tokens 请求
-        const isCountTokens = options && options.customPath && options.customPath.includes('count_tokens')
+        const isCountTokens =
+          options && options.customPath && options.customPath.includes('count_tokens')
         processedBody = this._processRequestBody(requestBody, clientHeaders, account, isCountTokens)
       }
 
@@ -937,7 +938,8 @@ class ClaudeRelayService {
       } else {
         // 正常模式：处理请求体（传递 clientHeaders 以判断是否需要设置 Claude Code 系统提示词）
         // 检查是否是 count_tokens 请求
-        const isCountTokens = options && options.customPath && options.customPath.includes('count_tokens')
+        const isCountTokens =
+          options && options.customPath && options.customPath.includes('count_tokens')
         processedBody = this._processRequestBody(requestBody, clientHeaders, account, isCountTokens)
       }
 
