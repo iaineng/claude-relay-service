@@ -722,12 +722,6 @@ class ClaudeRelayService {
           runtime: randomHeaders.runtime,
           os: randomHeaders.os
         })
-      } else {
-        // 使用统一 User-Agent 或客户端提供的，最后使用默认值
-        if (!options.headers['User-Agent'] && !options.headers['user-agent']) {
-          const userAgent = unifiedUA || 'claude-cli/1.0.57 (external, cli)'
-          options.headers['User-Agent'] = userAgent
-        }
       }
 
       logger.info(
@@ -1011,12 +1005,6 @@ class ClaudeRelayService {
           runtime: randomHeaders.runtime,
           os: randomHeaders.os
         })
-      } else {
-        // 使用统一 User-Agent 或客户端提供的，最后使用默认值
-        if (!options.headers['User-Agent'] && !options.headers['user-agent']) {
-          const userAgent = unifiedUA || 'claude-cli/1.0.57 (external, cli)'
-          options.headers['User-Agent'] = userAgent
-        }
       }
 
       logger.info(
