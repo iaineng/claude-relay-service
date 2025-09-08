@@ -288,7 +288,12 @@
                         <i class="fas fa-shield-alt mr-1"></i>
                         封号模式
                       </span>
-                      <!-- 显示所有分组 -->
+                    </div>
+                    <!-- 显示所有分组 - 换行显示 -->
+                    <div
+                      v-if="account.groupInfos && account.groupInfos.length > 0"
+                      class="flex items-center gap-2"
+                    >
                       <span
                         v-for="group in account.groupInfos"
                         :key="group.id"
@@ -1737,6 +1742,23 @@ const getSchedulableReason = (account) => {
     // 自动停止调度的原因
     if (account.stoppedReason) {
       return account.stoppedReason
+    }
+  }
+
+  // OpenAI 账户的错误状态
+  if (account.platform === 'openai') {
+    if (account.status === 'unauthorized') {
+      return '认证失败（401错误）'
+    }
+    // 检查限流状态 - 兼容嵌套的 rateLimitStatus 对象
+    if (
+      (account.rateLimitStatus && account.rateLimitStatus.isRateLimited) ||
+      account.isRateLimited
+    ) {
+      return '触发限流（429错误）'
+    }
+    if (account.status === 'error' && account.errorMessage) {
+      return account.errorMessage
     }
   }
 

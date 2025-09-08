@@ -32,6 +32,14 @@ const config = {
     enableTLS: process.env.REDIS_ENABLE_TLS === 'true'
   },
 
+  // 🔗 会话管理配置
+  session: {
+    // 粘性会话TTL配置（小时），默认1小时
+    stickyTtlHours: parseFloat(process.env.STICKY_SESSION_TTL_HOURS) || 1,
+    // 续期阈值（分钟），默认0分钟（不续期）
+    renewalThresholdMinutes: parseInt(process.env.STICKY_SESSION_RENEWAL_THRESHOLD_MINUTES) || 0
+  },
+
   // 🎯 Claude API配置
   claude: {
     apiUrl: process.env.CLAUDE_API_URL || 'https://api.anthropic.com/v1/messages',
@@ -56,11 +64,14 @@ const config = {
 
   // 🌐 代理配置
   proxy: {
-    timeout: parseInt(process.env.DEFAULT_PROXY_TIMEOUT) || 30000,
+    timeout: parseInt(process.env.DEFAULT_PROXY_TIMEOUT) || 600000, // 10分钟
     maxRetries: parseInt(process.env.MAX_PROXY_RETRIES) || 3,
     // IP协议族配置：true=IPv4, false=IPv6, 默认IPv4（兼容性更好）
     useIPv4: process.env.PROXY_USE_IPV4 !== 'false' // 默认 true，只有明确设置为 'false' 才使用 IPv6
   },
+
+  // ⏱️ 请求超时配置
+  requestTimeout: parseInt(process.env.REQUEST_TIMEOUT) || 600000, // 默认 10 分钟
 
   // 📈 使用限制
   limits: {

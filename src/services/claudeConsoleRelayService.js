@@ -124,7 +124,7 @@ class ClaudeConsoleRelayService {
           ...filteredHeaders
         },
         httpsAgent: proxyAgent,
-        timeout: config.proxy.timeout || 60000,
+        timeout: config.requestTimeout || 600000,
         signal: abortController.signal,
         validateStatus: () => true // 接受所有状态码
       }
@@ -351,7 +351,7 @@ class ClaudeConsoleRelayService {
           ...filteredHeaders
         },
         httpsAgent: proxyAgent,
-        timeout: config.proxy.timeout || 60000,
+        timeout: config.requestTimeout || 600000,
         responseType: 'stream',
         validateStatus: () => true // 接受所有状态码
       }
