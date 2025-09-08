@@ -2224,7 +2224,7 @@ const initProxyConfig = () => {
   if (props.account?.proxy && props.account.proxy.host && props.account.proxy.port) {
     return {
       enabled: true,
-      type: props.account.proxy.type || 'socks5',
+      type: props.account.proxy.type || 'http',
       host: props.account.proxy.host,
       port: props.account.proxy.port,
       username: props.account.proxy.username || '',
@@ -2233,7 +2233,7 @@ const initProxyConfig = () => {
   }
   return {
     enabled: false,
-    type: 'socks5',
+    type: 'http',
     host: '',
     port: '',
     username: '',
@@ -3426,7 +3426,7 @@ watch(
         newAccount.proxy && newAccount.proxy.host && newAccount.proxy.port
           ? {
               enabled: true,
-              type: newAccount.proxy.type || 'socks5',
+              type: newAccount.proxy.type || 'http',
               host: newAccount.proxy.host,
               port: newAccount.proxy.port,
               username: newAccount.proxy.username || '',
@@ -3434,7 +3434,7 @@ watch(
             }
           : {
               enabled: false,
-              type: 'socks5',
+              type: 'http',
               host: '',
               port: '',
               username: '',
