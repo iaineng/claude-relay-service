@@ -199,7 +199,9 @@ class ClaudeRelayService {
         logger.info('🔐 Ban mode: Skipping request body processing')
       } else {
         // 正常模式：处理请求体（传递 clientHeaders 以判断是否需要设置 Claude Code 系统提示词）
-        processedBody = this._processRequestBody(requestBody, clientHeaders, account)
+        // 检查是否是 count_tokens 请求
+        const isCountTokens = options && options.customPath && options.customPath.includes('count_tokens')
+        processedBody = this._processRequestBody(requestBody, clientHeaders, account, isCountTokens)
       }
 
       // 获取代理配置
@@ -420,17 +422,12 @@ class ClaudeRelayService {
   }
 
   // 🔄 处理请求体
-  _processRequestBody(body, clientHeaders = {}, accountOrOptions = null) {
-    // 兼容两种参数格式
-    const account = accountOrOptions && accountOrOptions.id ? accountOrOptions : null
-    const requestOptions = accountOrOptions && !accountOrOptions.id ? accountOrOptions : {}
+  _processRequestBody(body, clientHeaders = {}, account = null, isCountTokens = false) {
     if (!body) {
       return body
     }
 
     // 对于 count_tokens 请求，不进行任何处理，直接返回原始请求体
-    const isCountTokens =
-      requestOptions.customPath && requestOptions.customPath.includes('count_tokens')
     if (isCountTokens) {
       logger.debug('🔢 Skipping request body processing for count_tokens endpoint')
       return body
@@ -939,7 +936,9 @@ class ClaudeRelayService {
         logger.info('🔐 [Stream] Ban mode: Skipping request body processing')
       } else {
         // 正常模式：处理请求体（传递 clientHeaders 以判断是否需要设置 Claude Code 系统提示词）
-        processedBody = this._processRequestBody(requestBody, clientHeaders, account)
+        // 检查是否是 count_tokens 请求
+        const isCountTokens = options && options.customPath && options.customPath.includes('count_tokens')
+        processedBody = this._processRequestBody(requestBody, clientHeaders, account, isCountTokens)
       }
 
       // 获取代理配置
