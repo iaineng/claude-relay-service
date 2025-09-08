@@ -2,6 +2,7 @@ const https = require('https')
 const zlib = require('zlib')
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 const ProxyHelper = require('../utils/proxyHelper')
 const claudeAccountService = require('./claudeAccountService')
 const unifiedClaudeScheduler = require('./unifiedClaudeScheduler')
@@ -540,12 +541,28 @@ class ClaudeRelayService {
     return processedBody
   }
 
-  // 🔄 替换请求中的客户端标识
+  // 🔄 替换请求中的客户端标识或生成新的 user_id
   _replaceClientId(body, unifiedClientId) {
-    if (!body || !body.metadata || !body.metadata.user_id || !unifiedClientId) {
+    if (!body || !unifiedClientId) {
       return
     }
 
+    // 确保 metadata 对象存在
+    if (!body.metadata) {
+      body.metadata = {}
+    }
+
+    // 如果没有 user_id，生成一个新的
+    if (!body.metadata.user_id) {
+      // 生成随机的 session UUID
+      const sessionId = crypto.randomUUID()
+      // 生成格式：user_{unifiedClientId}_account__session_{uuid}
+      body.metadata.user_id = `user_${unifiedClientId}_account__session_${sessionId}`
+      logger.info(`🔄 Generated new user_id with unified client ID: ${body.metadata.user_id}`)
+      return
+    }
+
+    // 如果已有 user_id，尝试替换客户端标识部分
     const userId = body.metadata.user_id
     // user_id格式：user_{64位十六进制}_account__session_{uuid}
     // 只替换第一个下划线后到_account之前的部分（客户端标识）
