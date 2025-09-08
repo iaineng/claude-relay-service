@@ -198,7 +198,7 @@ class ClaudeRelayService {
         logger.info('🔐 Ban mode: Skipping request body processing')
       } else {
         // 正常模式：处理请求体（传递 clientHeaders 以判断是否需要设置 Claude Code 系统提示词）
-        processedBody = this._processRequestBody(requestBody, clientHeaders, options)
+        processedBody = this._processRequestBody(requestBody, clientHeaders, account)
       }
 
       // 获取代理配置
@@ -419,7 +419,10 @@ class ClaudeRelayService {
   }
 
   // 🔄 处理请求体
-  _processRequestBody(body, clientHeaders = {}, requestOptions = {}) {
+  _processRequestBody(body, clientHeaders = {}, accountOrOptions = null) {
+    // 兼容两种参数格式
+    const account = accountOrOptions && accountOrOptions.id ? accountOrOptions : null
+    const requestOptions = accountOrOptions && !accountOrOptions.id ? accountOrOptions : {}
     if (!body) {
       return body
     }
@@ -529,7 +532,29 @@ class ClaudeRelayService {
       delete processedBody.top_p
     }
 
+    // 处理统一的客户端标识
+    if (account && account.useUnifiedClientId && account.unifiedClientId) {
+      this._replaceClientId(processedBody, account.unifiedClientId)
+    }
+
     return processedBody
+  }
+
+  // 🔄 替换请求中的客户端标识
+  _replaceClientId(body, unifiedClientId) {
+    if (!body || !body.metadata || !body.metadata.user_id || !unifiedClientId) {
+      return
+    }
+
+    const userId = body.metadata.user_id
+    // user_id格式：user_{64位十六进制}_account__session_{uuid}
+    // 只替换第一个下划线后到_account之前的部分（客户端标识）
+    const match = userId.match(/^user_[a-f0-9]{64}(_account__session_[a-f0-9-]{36})$/)
+    if (match && match[1]) {
+      // 替换客户端标识部分
+      body.metadata.user_id = `user_${unifiedClientId}${match[1]}`
+      logger.info(`🔄 Replaced client ID with unified ID: ${body.metadata.user_id}`)
+    }
   }
 
   // 🔢 验证并限制max_tokens参数
@@ -697,9 +722,17 @@ class ClaudeRelayService {
           runtime: randomHeaders.runtime,
           os: randomHeaders.os
         })
+      } else {
+        // 使用统一 User-Agent 或客户端提供的，最后使用默认值
+        if (!options.headers['User-Agent'] && !options.headers['user-agent']) {
+          const userAgent = unifiedUA || 'claude-cli/1.0.57 (external, cli)'
+          options.headers['User-Agent'] = userAgent
+        }
       }
 
-      logger.info(`🔗 指纹是这个: ${options.headers['User-Agent']}`)
+      logger.info(
+        `🔗 指纹是这个: ${options.headers['User-Agent'] || options.headers['user-agent']}`
+      )
 
       // 使用 BetaHeaderManager 根据模型动态构建 beta header
       const model = body.model || 'unknown'
@@ -895,7 +928,7 @@ class ClaudeRelayService {
         logger.info('🔐 [Stream] Ban mode: Skipping request body processing')
       } else {
         // 正常模式：处理请求体（传递 clientHeaders 以判断是否需要设置 Claude Code 系统提示词）
-        processedBody = this._processRequestBody(requestBody, clientHeaders, options)
+        processedBody = this._processRequestBody(requestBody, clientHeaders, account)
       }
 
       // 获取代理配置
@@ -978,12 +1011,21 @@ class ClaudeRelayService {
           runtime: randomHeaders.runtime,
           os: randomHeaders.os
         })
+      } else {
+        // 使用统一 User-Agent 或客户端提供的，最后使用默认值
+        if (!options.headers['User-Agent'] && !options.headers['user-agent']) {
+          const userAgent = unifiedUA || 'claude-cli/1.0.57 (external, cli)'
+          options.headers['User-Agent'] = userAgent
+        }
       }
+
+      logger.info(
+        `🔗 指纹是这个: ${options.headers['User-Agent'] || options.headers['user-agent']}`
+      )
 
       // 使用 BetaHeaderManager 根据模型动态构建 beta header
       const model = body.model || 'unknown'
       const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
-
       if (betaHeader) {
         options.headers['anthropic-beta'] = betaHeader
         // 如果有 beta header，添加 ?beta=true 查询参数
