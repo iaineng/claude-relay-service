@@ -292,7 +292,7 @@
                     <!-- 显示所有分组 - 换行显示 -->
                     <div
                       v-if="account.groupInfos && account.groupInfos.length > 0"
-                      class="flex items-center gap-2"
+                      class="my-2 flex flex-wrap items-center gap-2"
                     >
                       <span
                         v-for="group in account.groupInfos"
