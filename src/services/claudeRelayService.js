@@ -191,19 +191,14 @@ class ClaudeRelayService {
       // 获取账户信息以检查banMode
       const account = await claudeAccountService.getAccount(accountId)
 
-      // 处理请求体（封号模式下跳过处理）
-      let processedBody
-      if (account && account.banMode === 'true') {
-        // 🔐 封号模式：跳过请求体处理，保持原始请求
-        processedBody = requestBody
-        logger.info('🔐 Ban mode: Skipping request body processing')
-      } else {
-        // 正常模式：处理请求体（传递 clientHeaders 以判断是否需要设置 Claude Code 系统提示词）
-        // 检查是否是 count_tokens 请求
-        const isCountTokens =
-          options && options.customPath && options.customPath.includes('count_tokens')
-        processedBody = this._processRequestBody(requestBody, clientHeaders, account, isCountTokens)
-      }
+      const isCountTokens =
+        options && options.customPath && options.customPath.includes('count_tokens')
+      const processedBody = this._processRequestBody(
+        requestBody,
+        clientHeaders,
+        account,
+        isCountTokens
+      )
 
       // 获取代理配置
       const proxyAgent = await this._getProxyAgent(accountId)
@@ -953,19 +948,14 @@ class ClaudeRelayService {
       // 获取账户信息以检查banMode
       const account = await claudeAccountService.getAccount(accountId)
 
-      // 处理请求体（封号模式下跳过处理）
-      let processedBody
-      if (account && account.banMode === 'true') {
-        // 🔐 封号模式：跳过请求体处理，保持原始请求
-        processedBody = requestBody
-        logger.info('🔐 [Stream] Ban mode: Skipping request body processing')
-      } else {
-        // 正常模式：处理请求体（传递 clientHeaders 以判断是否需要设置 Claude Code 系统提示词）
-        // 检查是否是 count_tokens 请求
-        const isCountTokens =
-          options && options.customPath && options.customPath.includes('count_tokens')
-        processedBody = this._processRequestBody(requestBody, clientHeaders, account, isCountTokens)
-      }
+      const isCountTokens =
+        options && options.customPath && options.customPath.includes('count_tokens')
+      const processedBody = this._processRequestBody(
+        requestBody,
+        clientHeaders,
+        account,
+        isCountTokens
+      )
 
       // 获取代理配置
       const proxyAgent = await this._getProxyAgent(accountId)
