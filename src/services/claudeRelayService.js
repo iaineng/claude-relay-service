@@ -188,7 +188,7 @@ class ClaudeRelayService {
       // 获取有效的访问token
       const accessToken = await claudeAccountService.getValidAccessToken(accountId)
 
-      // 获取账户信息以检查banMode
+      // 获取账户信息
       const account = await claudeAccountService.getAccount(accountId)
 
       const isCountTokens =
@@ -945,7 +945,7 @@ class ClaudeRelayService {
       // 获取有效的访问token
       const accessToken = await claudeAccountService.getValidAccessToken(accountId)
 
-      // 获取账户信息以检查banMode
+      // 获取账户信息
       const account = await claudeAccountService.getAccount(accountId)
 
       const isCountTokens =

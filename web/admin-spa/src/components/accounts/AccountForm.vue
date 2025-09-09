@@ -1648,7 +1648,6 @@
                       技术实现（仅供了解）：
                     </p>
                     <ul class="ml-4 list-disc space-y-1 text-xs text-gray-600 dark:text-gray-400">
-                      <li>跳过请求体处理，保持原始请求内容</li>
                       <li>User-Agent 随机化（浏览器/Node/移动端等）</li>
                       <li>系统信息随机化（OS/架构/运行时）</li>
                       <li>每次请求使用完全不同的客户端指纹</li>
