@@ -193,7 +193,7 @@ class ClaudeRelayService {
 
       // 处理请求体（封号模式下跳过处理）
       let processedBody
-      if (account && account.banMode === true) {
+      if (account && account.banMode === 'true') {
         // 🔐 封号模式：跳过请求体处理，保持原始请求
         processedBody = requestBody
         logger.info('🔐 Ban mode: Skipping request body processing')
@@ -740,7 +740,7 @@ class ClaudeRelayService {
       }
 
       // 🔐 封号模式：使用随机请求头
-      if (account && account.banMode === true) {
+      if (account && account.banMode === 'true') {
         const randomHeaders = randomHeaderGenerator.generate()
 
         // 替换可识别的请求头
@@ -955,7 +955,7 @@ class ClaudeRelayService {
 
       // 处理请求体（封号模式下跳过处理）
       let processedBody
-      if (account && account.banMode === true) {
+      if (account && account.banMode === 'true') {
         // 🔐 封号模式：跳过请求体处理，保持原始请求
         processedBody = requestBody
         logger.info('🔐 [Stream] Ban mode: Skipping request body processing')
@@ -1031,7 +1031,7 @@ class ClaudeRelayService {
       }
 
       // 🔐 封号模式：使用随机请求头（流式请求）
-      if (account && account.banMode === true) {
+      if (account && account.banMode === 'true') {
         const randomHeaders = randomHeaderGenerator.generate()
 
         // 替换可识别的请求头
