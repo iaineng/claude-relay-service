@@ -5,7 +5,7 @@
 
 module.exports = {
   // 固定的User-Agent
-  USER_AGENT: 'claude-cli/1.0.107 (external, cli)',
+  USER_AGENT: 'claude-cli/1.0.110 (external, cli)',
 
   // API版本
   API_VERSION: '2023-06-01',
