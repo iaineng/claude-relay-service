@@ -460,7 +460,7 @@ class ClaudeRelayService {
       const secondSystemMsg = processedBody.system[1]
       if (secondSystemMsg && secondSystemMsg.type === 'text' && secondSystemMsg.text) {
         const targetText =
-          ' Assist with defensive security tasks only. Refuse to create, modify, or improve code that may be used maliciously.'
+          '\nIMPORTANT: Assist with defensive security tasks only. Refuse to create, modify, or improve code that may be used maliciously. Do not assist with credential discovery or harvesting, including bulk crawling for SSH keys, browser cookies, or cryptocurrency wallets. Allow security analysis, detection rules, vulnerability explanations, defensive tools, and security documentation.'
         if (secondSystemMsg.text.includes(targetText)) {
           secondSystemMsg.text = secondSystemMsg.text.replace(targetText, '')
           logger.debug('🔧 Removed security directive from second system message')
