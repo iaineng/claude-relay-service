@@ -141,34 +141,6 @@ class ClaudeRelayService {
         requestedModel: requestBody.model
       })
 
-      // 检查模型限制
-      if (
-        apiKeyData.enableModelRestriction &&
-        apiKeyData.restrictedModels &&
-        apiKeyData.restrictedModels.length > 0
-      ) {
-        const requestedModel = requestBody.model
-        logger.info(
-          `🔒 Model restriction check - Requested model: ${requestedModel}, Restricted models: ${JSON.stringify(apiKeyData.restrictedModels)}`
-        )
-
-        if (requestedModel && apiKeyData.restrictedModels.includes(requestedModel)) {
-          logger.warn(
-            `🚫 Model restriction violation for key ${apiKeyData.name}: Attempted to use restricted model ${requestedModel}`
-          )
-          return {
-            statusCode: 403,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              error: {
-                type: 'forbidden',
-                message: '暂无该模型访问权限'
-              }
-            })
-          }
-        }
-      }
-
       // 生成会话哈希用于sticky会话
       const sessionHash = sessionHelper.generateSessionHash(requestBody)
 
@@ -733,6 +705,64 @@ class ClaudeRelayService {
     }
   }
 
+  // 🔧 过滤客户端请求头
+  _filterClientHeaders(clientHeaders) {
+    // 需要移除的敏感 headers
+    const sensitiveHeaders = [
+      'content-type',
+      'user-agent',
+      'x-api-key',
+      'authorization',
+      'host',
+      'content-length',
+      'connection',
+      'proxy-authorization',
+      'content-encoding',
+      'transfer-encoding'
+    ]
+
+    // 🆕 需要移除的浏览器相关 headers（避免CORS问题）
+    const browserHeaders = [
+      'origin',
+      'referer',
+      'sec-fetch-mode',
+      'sec-fetch-site',
+      'sec-fetch-dest',
+      'sec-ch-ua',
+      'sec-ch-ua-mobile',
+      'sec-ch-ua-platform',
+      'accept-language',
+      'accept-encoding',
+      'accept',
+      'cache-control',
+      'pragma',
+      'anthropic-dangerous-direct-browser-access' // 这个头可能触发CORS检查
+    ]
+
+    // 应该保留的 headers（用于会话一致性和追踪）
+    const allowedHeaders = [
+      'x-request-id',
+      'anthropic-version', // 保留API版本
+      'anthropic-beta' // 保留beta功能
+    ]
+
+    const filteredHeaders = {}
+
+    // 转发客户端的非敏感 headers
+    Object.keys(clientHeaders || {}).forEach((key) => {
+      const lowerKey = key.toLowerCase()
+      // 如果在允许列表中，直接保留
+      if (allowedHeaders.includes(lowerKey)) {
+        filteredHeaders[key] = clientHeaders[key]
+      }
+      // 如果不在敏感列表和浏览器列表中，也保留
+      else if (!sensitiveHeaders.includes(lowerKey) && !browserHeaders.includes(lowerKey)) {
+        filteredHeaders[key] = clientHeaders[key]
+      }
+    })
+
+    return filteredHeaders
+  }
   // 🔗 发送请求到Claude API
   async _makeClaudeRequest(
     body,
@@ -847,7 +877,7 @@ class ClaudeRelayService {
 
             resolve(response)
           } catch (error) {
-            logger.error('❌ Failed to parse Claude API response:', error)
+            logger.error(`❌ Failed to parse Claude API response (Account: ${accountId}):`, error)
             reject(error)
           }
         })
@@ -860,7 +890,7 @@ class ClaudeRelayService {
 
       req.on('error', async (error) => {
         console.error(': ❌ ', error)
-        logger.error('❌ Claude API request error:', error.message, {
+        logger.error(`❌ Claude API request error (Account: ${accountId}):`, error.message, {
           code: error.code,
           errno: error.errno,
           syscall: error.syscall,
@@ -887,7 +917,7 @@ class ClaudeRelayService {
 
       req.on('timeout', async () => {
         req.destroy()
-        logger.error('❌ Claude API request timeout')
+        logger.error(`❌ Claude API request timeout (Account: ${accountId})`)
 
         await this._handleServerError(accountId, 504, null, 'Request')
 
@@ -934,36 +964,6 @@ class ClaudeRelayService {
         restrictedModels: apiKeyData.restrictedModels,
         requestedModel: requestBody.model
       })
-
-      // 检查模型限制
-      if (
-        apiKeyData.enableModelRestriction &&
-        apiKeyData.restrictedModels &&
-        apiKeyData.restrictedModels.length > 0
-      ) {
-        const requestedModel = requestBody.model
-        logger.info(
-          `🔒 [Stream] Model restriction check - Requested model: ${requestedModel}, Restricted models: ${JSON.stringify(apiKeyData.restrictedModels)}`
-        )
-
-        if (requestedModel && apiKeyData.restrictedModels.includes(requestedModel)) {
-          logger.warn(
-            `🚫 Model restriction violation for key ${apiKeyData.name}: Attempted to use restricted model ${requestedModel}`
-          )
-
-          // 对于流式响应，需要写入错误并结束流
-          const errorResponse = JSON.stringify({
-            error: {
-              type: 'forbidden',
-              message: '暂无该模型访问权限'
-            }
-          })
-
-          responseStream.writeHead(403, { 'Content-Type': 'application/json' })
-          responseStream.end(errorResponse)
-          return
-        }
-      }
 
       // 生成会话哈希用于sticky会话
       const sessionHash = sessionHelper.generateSessionHash(requestBody)
@@ -1017,7 +1017,7 @@ class ClaudeRelayService {
         options
       )
     } catch (error) {
-      logger.error('❌ Claude stream relay with usage capture failed:', error)
+      logger.error(`❌ Claude stream relay with usage capture failed:`, error)
       throw error
     }
   }
@@ -1157,7 +1157,9 @@ class ClaudeRelayService {
             logger.error('❌ Error in stream error handler:', err)
           })
 
-          logger.error(`❌ Claude API returned error status: ${res.statusCode}`)
+          logger.error(
+            `❌ Claude API returned error status: ${res.statusCode} | Account: ${account?.name || accountId}`
+          )
           let errorData = ''
 
           res.on('data', (chunk) => {
@@ -1166,7 +1168,10 @@ class ClaudeRelayService {
 
           res.on('end', () => {
             console.error(': ❌ ', errorData)
-            logger.error('❌ Claude API error response:', errorData)
+            logger.error(
+              `❌ Claude API error response (Account: ${account?.name || accountId}):`,
+              errorData
+            )
             if (!responseStream.destroyed) {
               // 发送错误事件
               responseStream.write('event: error\n')
@@ -1491,11 +1496,15 @@ class ClaudeRelayService {
       })
 
       req.on('error', async (error) => {
-        logger.error('❌ Claude stream request error:', error.message, {
-          code: error.code,
-          errno: error.errno,
-          syscall: error.syscall
-        })
+        logger.error(
+          `❌ Claude stream request error (Account: ${account?.name || accountId}):`,
+          error.message,
+          {
+            code: error.code,
+            errno: error.errno,
+            syscall: error.syscall
+          }
+        )
 
         // 根据错误类型提供更具体的错误信息
         let errorMessage = 'Upstream request failed'
@@ -1539,7 +1548,7 @@ class ClaudeRelayService {
 
       req.on('timeout', async () => {
         req.destroy()
-        logger.error('❌ Claude stream request timeout')
+        logger.error(`❌ Claude stream request timeout | Account: ${account?.name || accountId}`)
 
         if (!responseStream.headersSent) {
           responseStream.writeHead(504, {
@@ -1651,7 +1660,7 @@ class ClaudeRelayService {
       })
 
       req.on('error', async (error) => {
-        logger.error('❌ Claude stream request error:', error.message, {
+        logger.error(`❌ Claude stream request error:`, error.message, {
           code: error.code,
           errno: error.errno,
           syscall: error.syscall
@@ -1699,7 +1708,7 @@ class ClaudeRelayService {
 
       req.on('timeout', async () => {
         req.destroy()
-        logger.error('❌ Claude stream request timeout')
+        logger.error(`❌ Claude stream request timeout`)
 
         if (!responseStream.headersSent) {
           responseStream.writeHead(504, {
