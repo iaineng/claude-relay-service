@@ -13,6 +13,31 @@ class RequestDumper {
   }
 
   /**
+   * 检查是否应该启用dump
+   * @returns {boolean} 是否应该dump
+   */
+  shouldDump() {
+    // 获取当前日志级别
+    const currentLevel = logger.level
+    
+    // Winston日志级别数值映射
+    const levelValues = {
+      error: 0,
+      warn: 1,
+      info: 2,
+      http: 3,
+      verbose: 4,
+      debug: 5,
+      silly: 6
+    }
+    
+    // 当前级别数值 >= info(2) 时启用dump
+    // 即：info、http、verbose、debug、silly级别时启用
+    const currentLevelValue = levelValues[currentLevel] !== undefined ? levelValues[currentLevel] : 2
+    return currentLevelValue >= levelValues.info
+  }
+
+  /**
    * 确保dump目录存在
    * @param {string} model - 模型名称
    * @returns {Promise<string>} 目录路径
@@ -142,6 +167,11 @@ class RequestDumper {
    * @param {Object} params - dump参数
    */
   async dumpOriginalRequest(params) {
+    // 检查是否应该启用dump
+    if (!this.shouldDump()) {
+      return
+    }
+
     const { model, url, headers, body, apiKey, sessionHash } = params
 
     try {
@@ -180,6 +210,11 @@ class RequestDumper {
    * @param {Object} params - dump参数
    */
   async dumpFinalRequest(params) {
+    // 检查是否应该启用dump
+    if (!this.shouldDump()) {
+      return
+    }
+
     const { model, url, headers, body, accountId, proxyInfo, sessionHash } = params
 
     try {
