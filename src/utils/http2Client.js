@@ -106,35 +106,18 @@ class Http2Client {
       // 如果有代理agent，需要特殊处理
       if (options.agent) {
         // 使用代理的createConnection方法建立隧道
-        connectOptions.createConnection = () =>
+        connectOptions.createConnection = (_authority, _connOptions) =>
           new Promise((connResolve, connReject) => {
-            // 代理agent会处理连接
-            const socket = options.agent.createConnection(
-              { host: hostname, port: options.port || 443 },
-              (err, sock) => {
-                if (err) {
-                  connReject(err)
-                } else {
-                  // 在代理隧道上建立TLS连接
-                  const tlsSocket = tls.connect({
-                    socket: sock,
-                    servername: hostname,
-                    ALPNProtocols: ['h2']
-                  })
-
-                  tlsSocket.once('secureConnect', () => {
-                    connResolve(tlsSocket)
-                  })
-
-                  tlsSocket.once('error', connReject)
-                }
+            // 创建一个临时的回调函数处理代理连接
+            const handleProxyConnection = (err, sock) => {
+              if (err) {
+                connReject(err)
+                return
               }
-            )
 
-            if (socket && !socket.connecting) {
-              // 同步返回的socket
+              // 在代理隧道上建立TLS连接
               const tlsSocket = tls.connect({
-                socket,
+                socket: sock,
                 servername: hostname,
                 ALPNProtocols: ['h2']
               })
@@ -144,6 +127,32 @@ class Http2Client {
               })
 
               tlsSocket.once('error', connReject)
+            }
+
+            try {
+              // 代理agent会处理连接 - 尝试同步和异步两种模式
+              const result = options.agent.createConnection(
+                { host: hostname, port: options.port || 443 },
+                handleProxyConnection
+              )
+
+              // 如果同步返回了socket，处理它
+              if (result && typeof result.on === 'function') {
+                // 在代理隧道上建立TLS连接
+                const tlsSocket = tls.connect({
+                  socket: result,
+                  servername: hostname,
+                  ALPNProtocols: ['h2']
+                })
+
+                tlsSocket.once('secureConnect', () => {
+                  connResolve(tlsSocket)
+                })
+
+                tlsSocket.once('error', connReject)
+              }
+            } catch (error) {
+              connReject(error)
             }
           })
       }
