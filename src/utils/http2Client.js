@@ -360,26 +360,24 @@ class Http2Client {
       // 创建流
       const stream = session.request(headers)
 
-      // 包装流对象，添加额外的属性和方法
-      const wrappedStream = Object.create(stream)
-      wrappedStream.statusCode = null
-      wrappedStream.headers = {}
-      wrappedStream.session = session
+      // 创建包装对象，不使用继承以避免只读属性问题
+      stream.statusCode = null
+      stream.headers = {}
 
       // 监听响应头
       stream.once('response', (responseHeaders) => {
-        wrappedStream.statusCode = responseHeaders[':status']
+        stream.statusCode = responseHeaders[':status']
         // 过滤掉HTTP/2伪头部
         for (const [key, value] of Object.entries(responseHeaders)) {
           if (!key.startsWith(':')) {
-            wrappedStream.headers[key] = value
+            stream.headers[key] = value
           }
         }
-        logger.debug(`📥 HTTP/2 SSE response status: ${wrappedStream.statusCode}`)
+        logger.debug(`📥 HTTP/2 SSE response status: ${stream.statusCode}`)
 
         // 调用响应回调（如果提供）
         if (options.onResponse) {
-          options.onResponse(wrappedStream.statusCode, wrappedStream.headers)
+          options.onResponse(stream.statusCode, stream.headers)
         }
       })
 
@@ -400,7 +398,7 @@ class Http2Client {
       }
       stream.end()
 
-      return wrappedStream
+      return stream
     } catch (error) {
       logger.error(`❌ HTTP/2 SSE stream request failed: ${error.message}`)
       throw error
