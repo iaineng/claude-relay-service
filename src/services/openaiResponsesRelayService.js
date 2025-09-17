@@ -1,4 +1,4 @@
-const axios = require('axios')
+const http2Client = require('../utils/http2Client')
 const ProxyHelper = require('../utils/proxyHelper')
 const logger = require('../utils/logger')
 const openaiResponsesAccountService = require('./openaiResponsesAccountService')
@@ -65,24 +65,11 @@ class OpenAIResponsesRelayService {
         logger.debug(`📱 Forwarding original User-Agent: ${req.headers['user-agent']}`)
       }
 
-      // 配置请求选项
-      const requestOptions = {
-        method: req.method,
-        url: targetUrl,
-        headers,
-        data: req.body,
-        timeout: this.defaultTimeout,
-        responseType: req.body?.stream ? 'stream' : 'json',
-        validateStatus: () => true, // 允许处理所有状态码
-        signal: abortController.signal
-      }
-
-      // 配置代理（如果有）
+      // 获取代理agent
+      let proxyAgent = null
       if (fullAccount.proxy) {
-        const proxyAgent = ProxyHelper.createProxyAgent(fullAccount.proxy)
+        proxyAgent = ProxyHelper.createProxyAgent(fullAccount.proxy)
         if (proxyAgent) {
-          requestOptions.httpsAgent = proxyAgent
-          requestOptions.proxy = false
           logger.info(
             `🌐 Using proxy for OpenAI-Responses: ${ProxyHelper.getProxyDescription(fullAccount.proxy)}`
           )
@@ -100,15 +87,63 @@ class OpenAIResponsesRelayService {
         userAgent: headers['User-Agent'] || 'not set'
       })
 
-      // 发送请求
-      const response = await axios(requestOptions)
+      // 处理流式请求
+      if (req.body?.stream) {
+        // 使用 HTTP/2 流式请求
+        const stream = await http2Client.streamSSE(targetUrl, {
+          method: req.method,
+          headers,
+          body: req.body,
+          agent: proxyAgent,
+          timeout: this.defaultTimeout,
+          onResponse: (statusCode, _responseHeaders) => {
+            logger.debug(`🌊 OpenAI-Responses stream response status: ${statusCode}`)
+            // 错误状态码将在 stream 的 data 事件中处理
+          }
+        })
+
+        // 设置 AbortController 取消逻辑
+        if (abortController) {
+          const abortHandler = () => {
+            if (!stream.destroyed) {
+              stream.destroy()
+            }
+          }
+          abortController.signal.addEventListener('abort', abortHandler)
+        }
+
+        // 处理流式响应 - 将stream包装成类似axios response的格式
+        return this._handleStreamResponse(
+          { data: stream, statusCode: stream.statusCode },
+          res,
+          account,
+          apiKeyData,
+          req.body?.model,
+          handleClientDisconnect,
+          req
+        )
+      }
+
+      // 非流式请求使用 HTTP/2
+      const response = await http2Client.request(targetUrl, {
+        method: req.method,
+        headers,
+        body: req.body,
+        agent: proxyAgent,
+        timeout: this.defaultTimeout
+      })
 
       // 处理 429 限流错误
-      if (response.status === 429) {
+      if (response.statusCode === 429) {
         const { resetsInSeconds, errorData } = await this._handle429Error(
           account,
-          response,
-          req.body?.stream,
+          {
+            status: response.statusCode,
+            statusCode: response.statusCode,
+            body: response.body,
+            data: response.body ? JSON.parse(response.body) : null
+          },
+          false,
           sessionHash
         )
 
@@ -121,51 +156,27 @@ class OpenAIResponsesRelayService {
             resets_in_seconds: resetsInSeconds
           }
         }
+
+        // 清理监听器
+        req.removeListener('close', handleClientDisconnect)
+        res.removeListener('close', handleClientDisconnect)
+
         return res.status(429).json(errorResponse)
       }
 
       // 处理其他错误状态码
-      if (response.status >= 400) {
-        // 处理流式错误响应
-        let errorData = response.data
-        if (response.data && typeof response.data.pipe === 'function') {
-          // 流式响应需要先读取内容
-          const chunks = []
-          await new Promise((resolve) => {
-            response.data.on('data', (chunk) => chunks.push(chunk))
-            response.data.on('end', resolve)
-            response.data.on('error', resolve)
-            setTimeout(resolve, 5000) // 超时保护
-          })
-          const fullResponse = Buffer.concat(chunks).toString()
-
-          // 尝试解析错误响应
-          try {
-            if (fullResponse.includes('data: ')) {
-              // SSE格式
-              const lines = fullResponse.split('\n')
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const jsonStr = line.slice(6).trim()
-                  if (jsonStr && jsonStr !== '[DONE]') {
-                    errorData = JSON.parse(jsonStr)
-                    break
-                  }
-                }
-              }
-            } else {
-              // 普通JSON
-              errorData = JSON.parse(fullResponse)
-            }
-          } catch (e) {
-            logger.error('Failed to parse error response:', e)
-            errorData = { error: { message: fullResponse || 'Unknown error' } }
-          }
+      if (response.statusCode >= 400) {
+        // 尝试解析错误响应体
+        let errorData = null
+        try {
+          errorData = JSON.parse(response.body)
+        } catch (e) {
+          logger.error('Failed to parse error response:', e)
+          errorData = { error: { message: response.body || 'Unknown error' } }
         }
 
         logger.error('OpenAI-Responses API error', {
-          status: response.status,
-          statusText: response.statusText,
+          status: response.statusCode,
           errorData
         })
 
@@ -173,7 +184,7 @@ class OpenAIResponsesRelayService {
         req.removeListener('close', handleClientDisconnect)
         res.removeListener('close', handleClientDisconnect)
 
-        return res.status(response.status).json(errorData)
+        return res.status(response.statusCode).json(errorData)
       }
 
       // 更新最后使用时间
@@ -181,21 +192,24 @@ class OpenAIResponsesRelayService {
         lastUsedAt: new Date().toISOString()
       })
 
-      // 处理流式响应
-      if (req.body?.stream && response.data && typeof response.data.pipe === 'function') {
-        return this._handleStreamResponse(
-          response,
-          res,
-          account,
-          apiKeyData,
-          req.body?.model,
-          handleClientDisconnect,
-          req
-        )
+      // 处理非流式响应 - 将HTTP/2响应包装成类似axios的格式
+      let responseData = null
+      try {
+        responseData = JSON.parse(response.body)
+      } catch (e) {
+        responseData = { error: { message: 'Invalid response format' } }
       }
 
-      // 处理非流式响应
-      return this._handleNormalResponse(response, res, account, apiKeyData, req.body?.model)
+      return this._handleNormalResponse(
+        {
+          status: response.statusCode,
+          data: responseData
+        },
+        res,
+        account,
+        apiKeyData,
+        req.body?.model
+      )
     } catch (error) {
       // 清理 AbortController
       if (abortController && !abortController.signal.aborted) {
@@ -224,36 +238,7 @@ class OpenAIResponsesRelayService {
         return res.end()
       }
 
-      // 检查是否是axios错误并包含响应
-      if (error.response) {
-        // 处理axios错误响应
-        const status = error.response.status || 500
-        let errorData = {
-          error: {
-            message: error.response.statusText || 'Request failed',
-            type: 'api_error',
-            code: error.code || 'unknown'
-          }
-        }
-
-        // 如果响应包含数据，尝试使用它
-        if (error.response.data) {
-          // 检查是否是流
-          if (typeof error.response.data === 'object' && !error.response.data.pipe) {
-            errorData = error.response.data
-          } else if (typeof error.response.data === 'string') {
-            try {
-              errorData = JSON.parse(error.response.data)
-            } catch (e) {
-              errorData.error.message = error.response.data
-            }
-          }
-        }
-
-        return res.status(status).json(errorData)
-      }
-
-      // 其他错误
+      // 其他错误（网络错误等）
       return res.status(500).json({
         error: {
           message: 'Internal server error',
