@@ -19,7 +19,7 @@ class RequestDumper {
   shouldDump() {
     // 获取当前日志级别
     const currentLevel = logger.level
-    
+
     // Winston日志级别数值映射
     const levelValues = {
       error: 0,
@@ -30,10 +30,11 @@ class RequestDumper {
       debug: 5,
       silly: 6
     }
-    
+
     // 当前级别数值 >= info(2) 时启用dump
     // 即：info、http、verbose、debug、silly级别时启用
-    const currentLevelValue = levelValues[currentLevel] !== undefined ? levelValues[currentLevel] : 2
+    const currentLevelValue =
+      levelValues[currentLevel] !== undefined ? levelValues[currentLevel] : 2
     return currentLevelValue >= levelValues.info
   }
 

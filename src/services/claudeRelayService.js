@@ -1,9 +1,9 @@
 const https = require('https')
-const zlib = require('zlib')
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const ProxyHelper = require('../utils/proxyHelper')
+const http2Client = require('../utils/http2Client')
 const claudeAccountService = require('./claudeAccountService')
 const unifiedClaudeScheduler = require('./unifiedClaudeScheduler')
 const sessionHelper = require('../utils/sessionHelper')
@@ -763,7 +763,7 @@ class ClaudeRelayService {
 
     return filteredHeaders
   }
-  // 🔗 发送请求到Claude API
+  // 🔗 发送请求到Claude API (HTTP/2)
   async _makeClaudeRequest(
     body,
     accessToken,
@@ -778,7 +778,7 @@ class ClaudeRelayService {
     // 获取账户信息以检查banMode状态
     const account = await claudeAccountService.getAccount(accountId)
 
-    return new Promise((resolve, reject) => {
+    try {
       // 支持自定义路径（如 count_tokens）
       let requestPath = url.pathname
       if (requestOptions.customPath) {
@@ -787,20 +787,12 @@ class ClaudeRelayService {
         requestPath = customUrl.pathname
       }
 
-      // 构建固定的请求头集合（严格控制）
-      const options = {
-        hostname: url.hostname,
-        port: url.port || 443,
-        path: requestPath,
-        method: 'POST',
-        headers: {
-          ...claudeConstants.FIXED_HEADERS,
-          Authorization: `Bearer ${accessToken}`,
-          'anthropic-version': this.apiVersion,
-          'User-Agent': claudeConstants.USER_AGENT
-        },
-        agent: proxyAgent,
-        timeout: config.requestTimeout || 600000
+      // 构建请求头（HTTP/2）
+      const headers = {
+        ...claudeConstants.FIXED_HEADERS,
+        Authorization: `Bearer ${accessToken}`,
+        'anthropic-version': this.apiVersion,
+        'User-Agent': claudeConstants.USER_AGENT
       }
 
       // 🔐 封号模式：使用随机请求头
@@ -808,12 +800,12 @@ class ClaudeRelayService {
         const randomHeaders = randomHeaderGenerator.generate()
 
         // 替换可识别的请求头
-        options.headers['User-Agent'] = randomHeaders.userAgent
-        options.headers['x-stainless-package-version'] = randomHeaders.packageVersion
-        options.headers['x-stainless-os'] = randomHeaders.os
-        options.headers['x-stainless-arch'] = randomHeaders.arch
-        options.headers['x-stainless-runtime'] = randomHeaders.runtime
-        options.headers['x-stainless-runtime-version'] = randomHeaders.runtimeVersion
+        headers['User-Agent'] = randomHeaders.userAgent
+        headers['x-stainless-package-version'] = randomHeaders.packageVersion
+        headers['x-stainless-os'] = randomHeaders.os
+        headers['x-stainless-arch'] = randomHeaders.arch
+        headers['x-stainless-runtime'] = randomHeaders.runtime
+        headers['x-stainless-runtime-version'] = randomHeaders.runtimeVersion
 
         logger.info('🔐 Ban mode activated - Using randomized headers', {
           userAgent: randomHeaders.userAgent,
@@ -822,115 +814,27 @@ class ClaudeRelayService {
         })
       }
 
-      logger.info(
-        `🔗 指纹是这个: ${options.headers['User-Agent'] || options.headers['user-agent']}`
-      )
+      logger.info(`🔗 指纹是这个: ${headers['User-Agent'] || headers['user-agent']}`)
 
       // 使用 BetaHeaderManager 根据模型动态构建 beta header
       const model = body.model || 'unknown'
       const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
 
       if (betaHeader) {
-        options.headers['anthropic-beta'] = betaHeader
+        headers['anthropic-beta'] = betaHeader
         // 如果有 beta header，添加 ?beta=true 查询参数
-        options.path += '?beta=true'
+        requestPath += '?beta=true'
       }
 
-      const req = https.request(options, (res) => {
-        let responseData = Buffer.alloc(0)
-
-        res.on('data', (chunk) => {
-          responseData = Buffer.concat([responseData, chunk])
-        })
-
-        res.on('end', () => {
-          try {
-            let bodyString = ''
-
-            // 根据Content-Encoding处理响应数据
-            const contentEncoding = res.headers['content-encoding']
-            if (contentEncoding === 'gzip') {
-              try {
-                bodyString = zlib.gunzipSync(responseData).toString('utf8')
-              } catch (unzipError) {
-                logger.error('❌ Failed to decompress gzip response:', unzipError)
-                bodyString = responseData.toString('utf8')
-              }
-            } else if (contentEncoding === 'deflate') {
-              try {
-                bodyString = zlib.inflateSync(responseData).toString('utf8')
-              } catch (unzipError) {
-                logger.error('❌ Failed to decompress deflate response:', unzipError)
-                bodyString = responseData.toString('utf8')
-              }
-            } else {
-              bodyString = responseData.toString('utf8')
-            }
-
-            const response = {
-              statusCode: res.statusCode,
-              headers: res.headers,
-              body: bodyString
-            }
-
-            logger.debug(`🔗 Claude API response: ${res.statusCode}`)
-
-            resolve(response)
-          } catch (error) {
-            logger.error(`❌ Failed to parse Claude API response (Account: ${accountId}):`, error)
-            reject(error)
-          }
-        })
-      })
-
-      // 如果提供了 onRequest 回调，传递请求对象
-      if (onRequest && typeof onRequest === 'function') {
-        onRequest(req)
-      }
-
-      req.on('error', async (error) => {
-        console.error(': ❌ ', error)
-        logger.error(`❌ Claude API request error (Account: ${accountId}):`, error.message, {
-          code: error.code,
-          errno: error.errno,
-          syscall: error.syscall,
-          address: error.address,
-          port: error.port
-        })
-
-        // 根据错误类型提供更具体的错误信息
-        let errorMessage = 'Upstream request failed'
-        if (error.code === 'ECONNRESET') {
-          errorMessage = 'Connection reset by Claude API server'
-        } else if (error.code === 'ENOTFOUND') {
-          errorMessage = 'Unable to resolve Claude API hostname'
-        } else if (error.code === 'ECONNREFUSED') {
-          errorMessage = 'Connection refused by Claude API server'
-        } else if (error.code === 'ETIMEDOUT') {
-          errorMessage = 'Connection timed out to Claude API server'
-
-          await this._handleServerError(accountId, 504, null, 'Network')
-        }
-
-        reject(new Error(errorMessage))
-      })
-
-      req.on('timeout', async () => {
-        req.destroy()
-        logger.error(`❌ Claude API request timeout (Account: ${accountId})`)
-
-        await this._handleServerError(accountId, 504, null, 'Request')
-
-        reject(new Error('Request timeout'))
-      })
+      // 构建最终URL
+      const finalUrl = `https://${url.hostname}:${url.port || 443}${requestPath}`
 
       // Dump最终请求（非流式）
-      const finalUrl = `https://${options.hostname}:${options.port || 443}${options.path}`
       requestDumper
         .dumpFinalRequest({
           model: body.model,
           url: finalUrl,
-          headers: options.headers,
+          headers,
           body,
           accountId,
           proxyInfo: proxyAgent ? { type: 'configured' } : null,
@@ -940,10 +844,42 @@ class ClaudeRelayService {
           logger.debug('Failed to dump final request:', err.message)
         })
 
-      // 写入请求体
-      req.write(JSON.stringify(body))
-      req.end()
-    })
+      // 使用HTTP/2发送请求
+      const response = await http2Client.request(finalUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        agent: proxyAgent,
+        timeout: config.requestTimeout || 600000
+      })
+
+      logger.debug(`🔗 Claude API response: ${response.statusCode}`)
+
+      // 返回响应（格式与原始保持一致）
+      return {
+        statusCode: response.statusCode,
+        headers: response.headers,
+        body: response.body
+      }
+    } catch (error) {
+      console.error(': ❌ ', error)
+      logger.error(`❌ Claude API request error (Account: ${accountId}):`, error.message)
+
+      // 根据错误类型提供更具体的错误信息
+      let errorMessage = 'Upstream request failed'
+      if (error.message.includes('ECONNRESET')) {
+        errorMessage = 'Connection reset by Claude API server'
+      } else if (error.message.includes('ENOTFOUND')) {
+        errorMessage = 'Unable to resolve Claude API hostname'
+      } else if (error.message.includes('ECONNREFUSED')) {
+        errorMessage = 'Connection refused by Claude API server'
+      } else if (error.message.includes('timeout')) {
+        errorMessage = 'Connection timed out to Claude API server'
+        await this._handleServerError(accountId, 504, null, 'Network')
+      }
+
+      throw new Error(errorMessage)
+    }
   }
 
   // 🌊 处理流式响应（带usage数据捕获）
@@ -1023,6 +959,7 @@ class ClaudeRelayService {
   }
 
   // 🌊 发送流式请求到Claude API（带usage数据捕获）
+  // 🌊 处理流式响应（带usage数据捕获）- HTTP/2版本
   async _makeClaudeStreamRequestWithUsageCapture(
     body,
     accessToken,
@@ -1038,10 +975,9 @@ class ClaudeRelayService {
   ) {
     // 获取账户信息以检查banMode状态
     const account = await claudeAccountService.getAccount(accountId)
+    const url = new URL(this.claudeApiUrl)
 
     return new Promise((resolve, reject) => {
-      const url = new URL(this.claudeApiUrl)
-
       // 构建固定的请求头集合（严格控制）- 流式请求
       const options = {
         hostname: url.hostname,
