@@ -1,4 +1,3 @@
-const https = require('https')
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
@@ -958,8 +957,7 @@ class ClaudeRelayService {
     }
   }
 
-  // 🌊 发送流式请求到Claude API（带usage数据捕获）
-  // 🌊 处理流式响应（带usage数据捕获）- HTTP/2版本
+  // 🌊 发送流式请求到Claude API（带usage数据捕获）- HTTP/2版本
   async _makeClaudeStreamRequestWithUsageCapture(
     body,
     accessToken,
@@ -978,723 +976,613 @@ class ClaudeRelayService {
     const url = new URL(this.claudeApiUrl)
 
     return new Promise((resolve, reject) => {
-      // 构建固定的请求头集合（严格控制）- 流式请求
-      const options = {
-        hostname: url.hostname,
-        port: url.port || 443,
-        path: url.pathname,
-        method: 'POST',
-        headers: {
-          ...claudeConstants.FIXED_HEADERS,
-          ...claudeConstants.STREAM_HEADER, // 添加流式请求专用header
-          Authorization: `Bearer ${accessToken}`,
-          'anthropic-version': this.apiVersion,
-          'User-Agent': claudeConstants.USER_AGENT
-        },
-        agent: proxyAgent,
-        timeout: config.requestTimeout || 600000
-      }
-
-      // 🔐 封号模式：使用随机请求头（流式请求）
-      if (account && account.banMode === 'true') {
-        const randomHeaders = randomHeaderGenerator.generate()
-
-        // 替换可识别的请求头
-        options.headers['User-Agent'] = randomHeaders.userAgent
-        options.headers['x-stainless-package-version'] = randomHeaders.packageVersion
-        options.headers['x-stainless-os'] = randomHeaders.os
-        options.headers['x-stainless-arch'] = randomHeaders.arch
-        options.headers['x-stainless-runtime'] = randomHeaders.runtime
-        options.headers['x-stainless-runtime-version'] = randomHeaders.runtimeVersion
-
-        logger.info('🔐 [Stream] Ban mode activated - Using randomized headers', {
-          userAgent: randomHeaders.userAgent,
-          runtime: randomHeaders.runtime,
-          os: randomHeaders.os
-        })
-      }
-
-      logger.info(
-        `🔗 指纹是这个: ${options.headers['User-Agent'] || options.headers['user-agent']}`
-      )
-
-      // 使用 BetaHeaderManager 根据模型动态构建 beta header
-      const model = body.model || 'unknown'
-      const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
-      if (betaHeader) {
-        options.headers['anthropic-beta'] = betaHeader
-        // 如果有 beta header，添加 ?beta=true 查询参数
-        options.path += '?beta=true'
-      }
-
-      const req = https.request(options, (res) => {
-        logger.debug(`🌊 Claude stream response status: ${res.statusCode}`)
-
-        // 错误响应处理
-        if (res.statusCode !== 200) {
-          // 将错误处理逻辑封装在一个异步函数中
-          const handleErrorResponse = async () => {
-            if (res.statusCode === 401) {
-              logger.warn(`🔐 [Stream] Unauthorized error (401) detected for account ${accountId}`)
-
-              await this.recordUnauthorizedError(accountId)
-
-              const errorCount = await this.getUnauthorizedErrorCount(accountId)
-              logger.info(
-                `🔐 [Stream] Account ${accountId} has ${errorCount} consecutive 401 errors in the last 5 minutes`
-              )
-
-              if (errorCount >= 1) {
-                logger.error(
-                  `❌ [Stream] Account ${accountId} encountered 401 error (${errorCount} errors), marking as unauthorized`
-                )
-                await unifiedClaudeScheduler.markAccountUnauthorized(
-                  accountId,
-                  accountType,
-                  sessionHash
-                )
-              }
-            } else if (res.statusCode === 403) {
-              logger.error(
-                `🚫 [Stream] Forbidden error (403) detected for account ${accountId}, marking as blocked`
-              )
-              await unifiedClaudeScheduler.markAccountBlocked(accountId, accountType, sessionHash)
-            } else if (res.statusCode === 529) {
-              logger.warn(`🚫 [Stream] Overload error (529) detected for account ${accountId}`)
-
-              // 检查是否启用了529错误处理
-              if (config.claude.overloadHandling.enabled > 0) {
-                try {
-                  await claudeAccountService.markAccountOverloaded(accountId)
-                  logger.info(
-                    `🚫 [Stream] Account ${accountId} marked as overloaded for ${config.claude.overloadHandling.enabled} minutes`
-                  )
-                } catch (overloadError) {
-                  logger.error(
-                    `❌ [Stream] Failed to mark account as overloaded: ${accountId}`,
-                    overloadError
-                  )
-                }
-              } else {
-                logger.info(
-                  `🚫 [Stream] 529 error handling is disabled, skipping account overload marking`
-                )
-              }
-            } else if (res.statusCode >= 500 && res.statusCode < 600) {
-              logger.warn(
-                `🔥 [Stream] Server error (${res.statusCode}) detected for account ${accountId}`
-              )
-              await this._handleServerError(accountId, res.statusCode, sessionHash, '[Stream]')
-            }
+      const setupStream = async () => {
+        try {
+          // 支持自定义路径（如 count_tokens）
+          let requestPath = url.pathname
+          if (requestOptions.customPath) {
+            const baseUrl = new URL('https://api.anthropic.com')
+            const customUrl = new URL(requestOptions.customPath, baseUrl)
+            requestPath = customUrl.pathname
           }
 
-          // 调用异步错误处理函数
-          handleErrorResponse().catch((err) => {
-            logger.error('❌ Error in stream error handler:', err)
-          })
-
-          logger.error(
-            `❌ Claude API returned error status: ${res.statusCode} | Account: ${account?.name || accountId}`
-          )
-          let errorData = ''
-
-          res.on('data', (chunk) => {
-            errorData += chunk.toString()
-          })
-
-          res.on('end', () => {
-            console.error(': ❌ ', errorData)
-            logger.error(
-              `❌ Claude API error response (Account: ${account?.name || accountId}):`,
-              errorData
-            )
-            if (!responseStream.destroyed) {
-              // 发送错误事件
-              responseStream.write('event: error\n')
-              responseStream.write(
-                `data: ${JSON.stringify({
-                  error: 'Claude API error',
-                  status: res.statusCode,
-                  details: errorData,
-                  timestamp: new Date().toISOString()
-                })}\n\n`
-              )
-              responseStream.end()
-            }
-            reject(new Error(`Claude API error: ${res.statusCode}`))
-          })
-          return
-        }
-
-        let buffer = ''
-        const allUsageData = [] // 收集所有的usage事件
-        let currentUsageData = {} // 当前正在收集的usage数据
-        let rateLimitDetected = false // 限流检测标志
-
-        // 监听数据块，解析SSE并寻找usage信息
-        res.on('data', (chunk) => {
-          try {
-            const chunkStr = chunk.toString()
-
-            buffer += chunkStr
-
-            // 处理完整的SSE行
-            const lines = buffer.split('\n')
-            buffer = lines.pop() || '' // 保留最后的不完整行
-
-            // 转发已处理的完整行到客户端
-            if (lines.length > 0 && !responseStream.destroyed) {
-              const linesToForward = lines.join('\n') + (lines.length > 0 ? '\n' : '')
-              // 如果有流转换器，应用转换
-              if (streamTransformer) {
-                const transformed = streamTransformer(linesToForward)
-                if (transformed) {
-                  responseStream.write(transformed)
-                }
-              } else {
-                responseStream.write(linesToForward)
-              }
-            }
-
-            for (const line of lines) {
-              // 解析SSE数据寻找usage信息
-              if (line.startsWith('data: ') && line.length > 6) {
-                try {
-                  const jsonStr = line.slice(6)
-                  const data = JSON.parse(jsonStr)
-
-                  // 收集来自不同事件的usage数据
-                  if (data.type === 'message_start' && data.message && data.message.usage) {
-                    // 新的消息开始，如果之前有数据，先保存
-                    if (
-                      currentUsageData.input_tokens !== undefined &&
-                      currentUsageData.output_tokens !== undefined
-                    ) {
-                      allUsageData.push({ ...currentUsageData })
-                      currentUsageData = {}
-                    }
-
-                    // message_start包含input tokens、cache tokens和模型信息
-                    currentUsageData.input_tokens = data.message.usage.input_tokens || 0
-                    currentUsageData.cache_creation_input_tokens =
-                      data.message.usage.cache_creation_input_tokens || 0
-                    currentUsageData.cache_read_input_tokens =
-                      data.message.usage.cache_read_input_tokens || 0
-                    currentUsageData.model = data.message.model
-
-                    // 检查是否有详细的 cache_creation 对象
-                    if (
-                      data.message.usage.cache_creation &&
-                      typeof data.message.usage.cache_creation === 'object'
-                    ) {
-                      currentUsageData.cache_creation = {
-                        ephemeral_5m_input_tokens:
-                          data.message.usage.cache_creation.ephemeral_5m_input_tokens || 0,
-                        ephemeral_1h_input_tokens:
-                          data.message.usage.cache_creation.ephemeral_1h_input_tokens || 0
-                      }
-                      logger.debug(
-                        '📊 Collected detailed cache creation data:',
-                        JSON.stringify(currentUsageData.cache_creation)
-                      )
-                    }
-
-                    logger.debug(
-                      '📊 Collected input/cache data from message_start:',
-                      JSON.stringify(currentUsageData)
-                    )
-                  }
-
-                  // message_delta包含最终的output tokens
-                  if (
-                    data.type === 'message_delta' &&
-                    data.usage &&
-                    data.usage.output_tokens !== undefined
-                  ) {
-                    currentUsageData.output_tokens = data.usage.output_tokens || 0
-
-                    logger.debug(
-                      '📊 Collected output data from message_delta:',
-                      JSON.stringify(currentUsageData)
-                    )
-
-                    // 如果已经收集到了input数据和output数据，这是一个完整的usage
-                    if (currentUsageData.input_tokens !== undefined) {
-                      logger.debug(
-                        '🎯 Complete usage data collected for model:',
-                        currentUsageData.model,
-                        '- Input:',
-                        currentUsageData.input_tokens,
-                        'Output:',
-                        currentUsageData.output_tokens
-                      )
-                      // 保存到列表中，但不立即触发回调
-                      allUsageData.push({ ...currentUsageData })
-                      // 重置当前数据，准备接收下一个
-                      currentUsageData = {}
-                    }
-                  }
-
-                  // 检查是否有限流错误
-                  if (
-                    data.type === 'error' &&
-                    data.error &&
-                    data.error.message &&
-                    data.error.message.toLowerCase().includes("exceed your account's rate limit")
-                  ) {
-                    rateLimitDetected = true
-                    logger.warn(`🚫 Rate limit detected in stream for account ${accountId}`)
-                  }
-                } catch (parseError) {
-                  // 忽略JSON解析错误，继续处理
-                  logger.debug('🔍 SSE line not JSON or no usage data:', line.slice(0, 100))
-                }
-              }
-            }
-          } catch (error) {
-            logger.error('❌ Error processing stream data:', error)
-            // 发送错误但不破坏流，让它自然结束
-            if (!responseStream.destroyed) {
-              responseStream.write('event: error\n')
-              responseStream.write(
-                `data: ${JSON.stringify({
-                  error: 'Stream processing error',
-                  message: error.message,
-                  timestamp: new Date().toISOString()
-                })}\n\n`
-              )
-            }
-          }
-        })
-
-        res.on('end', async () => {
-          try {
-            // 处理缓冲区中剩余的数据
-            if (buffer.trim() && !responseStream.destroyed) {
-              if (streamTransformer) {
-                const transformed = streamTransformer(buffer)
-                if (transformed) {
-                  responseStream.write(transformed)
-                }
-              } else {
-                responseStream.write(buffer)
-              }
-            }
-
-            // 确保流正确结束
-            if (!responseStream.destroyed) {
-              responseStream.end()
-            }
-          } catch (error) {
-            logger.error('❌ Error processing stream end:', error)
+          // 构建请求头（HTTP/2）- 流式请求
+          const headers = {
+            ...claudeConstants.FIXED_HEADERS,
+            ...claudeConstants.STREAM_HEADER, // 添加流式请求专用header
+            Authorization: `Bearer ${accessToken}`,
+            'anthropic-version': this.apiVersion,
+            'User-Agent': claudeConstants.USER_AGENT
           }
 
-          // 如果还有未完成的usage数据，尝试保存
-          if (currentUsageData.input_tokens !== undefined) {
-            if (currentUsageData.output_tokens === undefined) {
-              currentUsageData.output_tokens = 0 // 如果没有output，设为0
-            }
-            allUsageData.push(currentUsageData)
+          // 🔐 封号模式：使用随机请求头（流式请求）
+          if (account && account.banMode === 'true') {
+            const randomHeaders = randomHeaderGenerator.generate()
+
+            // 替换可识别的请求头
+            headers['User-Agent'] = randomHeaders.userAgent
+            headers['x-stainless-package-version'] = randomHeaders.packageVersion
+            headers['x-stainless-os'] = randomHeaders.os
+            headers['x-stainless-arch'] = randomHeaders.arch
+            headers['x-stainless-runtime'] = randomHeaders.runtime
+            headers['x-stainless-runtime-version'] = randomHeaders.runtimeVersion
+
+            logger.info('🔐 [Stream] Ban mode activated - Using randomized headers', {
+              userAgent: randomHeaders.userAgent,
+              runtime: randomHeaders.runtime,
+              os: randomHeaders.os
+            })
           }
 
-          // 检查是否捕获到usage数据
-          if (allUsageData.length === 0) {
-            logger.warn(
-              '⚠️ Stream completed but no usage data was captured! This indicates a problem with SSE parsing or Claude API response format.'
-            )
-          } else {
-            // 打印此次请求的所有usage数据汇总
-            const totalUsage = allUsageData.reduce(
-              (acc, usage) => ({
-                input_tokens: (acc.input_tokens || 0) + (usage.input_tokens || 0),
-                output_tokens: (acc.output_tokens || 0) + (usage.output_tokens || 0),
-                cache_creation_input_tokens:
-                  (acc.cache_creation_input_tokens || 0) + (usage.cache_creation_input_tokens || 0),
-                cache_read_input_tokens:
-                  (acc.cache_read_input_tokens || 0) + (usage.cache_read_input_tokens || 0),
-                models: [...(acc.models || []), usage.model].filter(Boolean)
-              }),
-              {}
-            )
+          logger.info(`🔗 指纹是这个: ${headers['User-Agent'] || headers['user-agent']}`)
 
-            // 打印原始的usage数据为JSON字符串，避免嵌套问题
-            logger.info(
-              `📊 === Stream Request Usage Summary === Model: ${body.model}, Total Events: ${allUsageData.length}, Usage Data: ${JSON.stringify(allUsageData)}`
-            )
+          // 使用 BetaHeaderManager 根据模型动态构建 beta header
+          const model = body.model || 'unknown'
+          const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
 
-            // 一般一个请求只会使用一个模型，即使有多个usage事件也应该合并
-            // 计算总的usage
-            const finalUsage = {
-              input_tokens: totalUsage.input_tokens,
-              output_tokens: totalUsage.output_tokens,
-              cache_creation_input_tokens: totalUsage.cache_creation_input_tokens,
-              cache_read_input_tokens: totalUsage.cache_read_input_tokens,
-              model: allUsageData[allUsageData.length - 1].model || body.model // 使用最后一个模型或请求模型
-            }
+          if (betaHeader) {
+            headers['anthropic-beta'] = betaHeader
+            // 如果有 beta header，添加 ?beta=true 查询参数
+            requestPath += '?beta=true'
+          }
 
-            // 如果有详细的cache_creation数据，合并它们
-            let totalEphemeral5m = 0
-            let totalEphemeral1h = 0
-            allUsageData.forEach((usage) => {
-              if (usage.cache_creation && typeof usage.cache_creation === 'object') {
-                totalEphemeral5m += usage.cache_creation.ephemeral_5m_input_tokens || 0
-                totalEphemeral1h += usage.cache_creation.ephemeral_1h_input_tokens || 0
-              }
+          // 构建最终URL
+          const finalUrl = `https://${url.hostname}:${url.port || 443}${requestPath}`
+
+          // Dump最终请求（流式）
+          requestDumper
+            .dumpFinalRequest({
+              model: body.model,
+              url: finalUrl,
+              headers,
+              body,
+              accountId,
+              proxyInfo: proxyAgent ? { type: 'configured' } : null,
+              sessionHash
+            })
+            .catch((err) => {
+              logger.debug('Failed to dump stream final request:', err.message)
             })
 
-            // 如果有详细的缓存数据，添加到finalUsage
-            if (totalEphemeral5m > 0 || totalEphemeral1h > 0) {
-              finalUsage.cache_creation = {
-                ephemeral_5m_input_tokens: totalEphemeral5m,
-                ephemeral_1h_input_tokens: totalEphemeral1h
+          // 使用HTTP/2发送SSE流式请求
+          const stream = await http2Client.streamSSE(finalUrl, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+            agent: proxyAgent,
+            timeout: config.requestTimeout || 600000,
+            onResponse: (statusCode, _responseHeaders) => {
+              logger.debug(`🌊 Claude stream response status: ${statusCode}`)
+
+              // 错误响应处理
+              if (statusCode !== 200) {
+                // 将错误处理逻辑封装在一个异步函数中
+                const handleErrorResponse = async () => {
+                  if (statusCode === 401) {
+                    logger.warn(
+                      `🔐 [Stream] Unauthorized error (401) detected for account ${accountId}`
+                    )
+
+                    await this.recordUnauthorizedError(accountId)
+
+                    const errorCount = await this.getUnauthorizedErrorCount(accountId)
+                    logger.info(
+                      `🔐 [Stream] Account ${accountId} has ${errorCount} consecutive 401 errors in the last 5 minutes`
+                    )
+
+                    if (errorCount >= 1) {
+                      logger.error(
+                        `❌ [Stream] Account ${accountId} encountered 401 error (${errorCount} errors), marking as unauthorized`
+                      )
+                      await unifiedClaudeScheduler.markAccountUnauthorized(
+                        accountId,
+                        accountType,
+                        sessionHash
+                      )
+                    }
+                  } else if (statusCode === 403) {
+                    logger.error(
+                      `🚫 [Stream] Forbidden error (403) detected for account ${accountId}, marking as blocked`
+                    )
+                    await unifiedClaudeScheduler.markAccountBlocked(
+                      accountId,
+                      accountType,
+                      sessionHash
+                    )
+                  } else if (statusCode === 529) {
+                    logger.warn(
+                      `🚫 [Stream] Overload error (529) detected for account ${accountId}`
+                    )
+
+                    // 检查是否启用了529错误处理
+                    if (config.claude.overloadHandling.enabled > 0) {
+                      try {
+                        await claudeAccountService.markAccountOverloaded(accountId)
+                        logger.info(
+                          `🚫 [Stream] Account ${accountId} marked as overloaded for ${config.claude.overloadHandling.enabled} minutes`
+                        )
+                      } catch (overloadError) {
+                        logger.error(
+                          `❌ [Stream] Failed to mark account as overloaded: ${accountId}`,
+                          overloadError
+                        )
+                      }
+                    } else {
+                      logger.info(
+                        `🚫 [Stream] 529 error handling is disabled, skipping account overload marking`
+                      )
+                    }
+                  } else if (statusCode >= 500 && statusCode < 600) {
+                    logger.warn(
+                      `🔥 [Stream] Server error (${statusCode}) detected for account ${accountId}`
+                    )
+                    await this._handleServerError(accountId, statusCode, sessionHash, '[Stream]')
+                  }
+                }
+
+                // 调用异步错误处理函数
+                handleErrorResponse().catch((err) => {
+                  logger.error('❌ Error in stream error handler:', err)
+                })
+
+                logger.error(
+                  `❌ Claude API returned error status: ${statusCode} | Account: ${account?.name || accountId}`
+                )
+                let errorData = ''
+
+                stream.on('data', (chunk) => {
+                  errorData += chunk.toString()
+                })
+
+                stream.on('end', () => {
+                  console.error(': ❌ ', errorData)
+                  logger.error(
+                    `❌ Claude API error response (Account: ${account?.name || accountId}):`,
+                    errorData
+                  )
+                  if (!responseStream.destroyed) {
+                    // 发送错误事件
+                    responseStream.write('event: error\n')
+                    responseStream.write(
+                      `data: ${JSON.stringify({
+                        error: 'Claude API error',
+                        status: statusCode,
+                        details: errorData,
+                        timestamp: new Date().toISOString()
+                      })}\n\n`
+                    )
+                    responseStream.end()
+                  }
+                  reject(new Error(`Claude API error: ${statusCode}`))
+                })
+                return
               }
-              logger.info(
-                '📊 Detailed cache creation breakdown:',
-                JSON.stringify(finalUsage.cache_creation)
-              )
             }
+          })
 
-            // 调用一次usageCallback记录合并后的数据
-            usageCallback(finalUsage)
-          }
+          let buffer = ''
+          const allUsageData = [] // 收集所有的usage事件
+          let currentUsageData = {} // 当前正在收集的usage数据
+          let rateLimitDetected = false // 限流检测标志
 
-          // 提取5小时会话窗口状态
-          // 使用大小写不敏感的方式获取响应头
-          const get5hStatus = (headers) => {
-            if (!headers) {
-              return null
-            }
-            // HTTP头部名称不区分大小写，需要处理不同情况
-            return (
-              headers['anthropic-ratelimit-unified-5h-status'] ||
-              headers['Anthropic-Ratelimit-Unified-5h-Status'] ||
-              headers['ANTHROPIC-RATELIMIT-UNIFIED-5H-STATUS']
-            )
-          }
-
-          const sessionWindowStatus = get5hStatus(res.headers)
-          if (sessionWindowStatus) {
-            logger.info(`📊 Session window status for account ${accountId}: ${sessionWindowStatus}`)
-            // 保存会话窗口状态到账户数据
-            await claudeAccountService.updateSessionWindowStatus(accountId, sessionWindowStatus)
-          }
-
-          // 处理限流状态
-          if (rateLimitDetected || res.statusCode === 429) {
-            // 提取限流重置时间戳
-            let rateLimitResetTimestamp = null
-            if (res.headers && res.headers['anthropic-ratelimit-unified-reset']) {
-              rateLimitResetTimestamp = parseInt(res.headers['anthropic-ratelimit-unified-reset'])
-              logger.info(
-                `🕐 Extracted rate limit reset timestamp from stream: ${rateLimitResetTimestamp} (${new Date(rateLimitResetTimestamp * 1000).toISOString()})`
-              )
-            }
-
-            // 标记账号为限流状态并删除粘性会话映射
-            await unifiedClaudeScheduler.markAccountRateLimited(
-              accountId,
-              accountType,
-              sessionHash,
-              rateLimitResetTimestamp
-            )
-          } else if (res.statusCode === 200) {
-            // 请求成功，清除401和500错误计数
-            await this.clearUnauthorizedErrors(accountId)
-            await claudeAccountService.clearInternalErrors(accountId)
-            // 如果请求成功，检查并移除限流状态
-            const isRateLimited = await unifiedClaudeScheduler.isAccountRateLimited(
-              accountId,
-              accountType
-            )
-            if (isRateLimited) {
-              await unifiedClaudeScheduler.removeAccountRateLimit(accountId, accountType)
-            }
-
-            // 如果流式请求成功，检查并移除过载状态
+          // 监听数据块，解析SSE并寻找usage信息
+          stream.on('data', (chunk) => {
             try {
-              const isOverloaded = await claudeAccountService.isAccountOverloaded(accountId)
-              if (isOverloaded) {
-                await claudeAccountService.removeAccountOverload(accountId)
+              const chunkStr = chunk.toString()
+
+              buffer += chunkStr
+
+              // 处理完整的SSE行
+              const lines = buffer.split('\n')
+              buffer = lines.pop() || '' // 保留最后的不完整行
+
+              // 转发已处理的完整行到客户端
+              if (lines.length > 0 && !responseStream.destroyed) {
+                const linesToForward = lines.join('\n') + (lines.length > 0 ? '\n' : '')
+                // 如果有流转换器，应用转换
+                if (streamTransformer) {
+                  const transformed = streamTransformer(linesToForward)
+                  if (transformed) {
+                    responseStream.write(transformed)
+                  }
+                } else {
+                  responseStream.write(linesToForward)
+                }
               }
-            } catch (overloadError) {
-              logger.error(
-                `❌ [Stream] Failed to check/remove overload status for account ${accountId}:`,
-                overloadError
+
+              for (const line of lines) {
+                // 解析SSE数据寻找usage信息
+                if (line.startsWith('data: ') && line.length > 6) {
+                  try {
+                    const jsonStr = line.slice(6)
+                    const data = JSON.parse(jsonStr)
+
+                    // 收集来自不同事件的usage数据
+                    if (data.type === 'message_start' && data.message && data.message.usage) {
+                      // 新的消息开始，如果之前有数据，先保存
+                      if (
+                        currentUsageData.input_tokens !== undefined &&
+                        currentUsageData.output_tokens !== undefined
+                      ) {
+                        allUsageData.push({ ...currentUsageData })
+                        currentUsageData = {}
+                      }
+
+                      // message_start包含input tokens、cache tokens和模型信息
+                      currentUsageData.input_tokens = data.message.usage.input_tokens || 0
+                      currentUsageData.cache_creation_input_tokens =
+                        data.message.usage.cache_creation_input_tokens || 0
+                      currentUsageData.cache_read_input_tokens =
+                        data.message.usage.cache_read_input_tokens || 0
+                      currentUsageData.model = data.message.model
+
+                      // 检查是否有详细的 cache_creation 对象
+                      if (
+                        data.message.usage.cache_creation &&
+                        typeof data.message.usage.cache_creation === 'object'
+                      ) {
+                        currentUsageData.cache_creation = {
+                          ephemeral_5m_input_tokens:
+                            data.message.usage.cache_creation.ephemeral_5m_input_tokens || 0,
+                          ephemeral_1h_input_tokens:
+                            data.message.usage.cache_creation.ephemeral_1h_input_tokens || 0
+                        }
+                        logger.debug(
+                          '📊 Collected detailed cache creation data:',
+                          JSON.stringify(currentUsageData.cache_creation)
+                        )
+                      }
+
+                      logger.debug(
+                        '📊 Collected input/cache data from message_start:',
+                        JSON.stringify(currentUsageData)
+                      )
+                    }
+
+                    // message_delta包含最终的output tokens
+                    if (
+                      data.type === 'message_delta' &&
+                      data.usage &&
+                      data.usage.output_tokens !== undefined
+                    ) {
+                      currentUsageData.output_tokens = data.usage.output_tokens || 0
+
+                      logger.debug(
+                        '📊 Collected output data from message_delta:',
+                        JSON.stringify(currentUsageData)
+                      )
+
+                      // 如果已经收集到了input数据和output数据，这是一个完整的usage
+                      if (currentUsageData.input_tokens !== undefined) {
+                        logger.debug(
+                          '🎯 Complete usage data collected for model:',
+                          currentUsageData.model,
+                          '- Input:',
+                          currentUsageData.input_tokens,
+                          'Output:',
+                          currentUsageData.output_tokens
+                        )
+                        // 保存到列表中，但不立即触发回调
+                        allUsageData.push({ ...currentUsageData })
+                        // 重置当前数据，准备接收下一个
+                        currentUsageData = {}
+                      }
+                    }
+
+                    // 检查是否有限流错误
+                    if (
+                      data.type === 'error' &&
+                      data.error &&
+                      data.error.message &&
+                      data.error.message.toLowerCase().includes("exceed your account's rate limit")
+                    ) {
+                      rateLimitDetected = true
+                      logger.warn(`🚫 Rate limit detected in stream for account ${accountId}`)
+                    }
+                  } catch (parseError) {
+                    // 忽略JSON解析错误，继续处理
+                    logger.debug('🔍 SSE line not JSON or no usage data:', line.slice(0, 100))
+                  }
+                }
+              }
+            } catch (error) {
+              logger.error('❌ Error processing stream data:', error)
+              // 发送错误但不破坏流，让它自然结束
+              if (!responseStream.destroyed) {
+                responseStream.write('event: error\n')
+                responseStream.write(
+                  `data: ${JSON.stringify({
+                    error: 'Stream processing error',
+                    message: error.message,
+                    timestamp: new Date().toISOString()
+                  })}\n\n`
+                )
+              }
+            }
+          })
+
+          stream.on('end', async () => {
+            try {
+              // 处理缓冲区中剩余的数据
+              if (buffer.trim() && !responseStream.destroyed) {
+                if (streamTransformer) {
+                  const transformed = streamTransformer(buffer)
+                  if (transformed) {
+                    responseStream.write(transformed)
+                  }
+                } else {
+                  responseStream.write(buffer)
+                }
+              }
+
+              // 确保流正确结束
+              if (!responseStream.destroyed) {
+                responseStream.end()
+              }
+            } catch (error) {
+              logger.error('❌ Error processing stream end:', error)
+            }
+
+            // 如果还有未完成的usage数据，尝试保存
+            if (currentUsageData.input_tokens !== undefined) {
+              if (currentUsageData.output_tokens === undefined) {
+                currentUsageData.output_tokens = 0 // 如果没有output，设为0
+              }
+              allUsageData.push(currentUsageData)
+            }
+
+            // 检查是否捕获到usage数据
+            if (allUsageData.length === 0) {
+              logger.warn(
+                '⚠️ Stream completed but no usage data was captured! This indicates a problem with SSE parsing or Claude API response format.'
+              )
+            } else {
+              // 打印此次请求的所有usage数据汇总
+              const totalUsage = allUsageData.reduce(
+                (acc, usage) => ({
+                  input_tokens: (acc.input_tokens || 0) + (usage.input_tokens || 0),
+                  output_tokens: (acc.output_tokens || 0) + (usage.output_tokens || 0),
+                  cache_creation_input_tokens:
+                    (acc.cache_creation_input_tokens || 0) +
+                    (usage.cache_creation_input_tokens || 0),
+                  cache_read_input_tokens:
+                    (acc.cache_read_input_tokens || 0) + (usage.cache_read_input_tokens || 0),
+                  models: [...(acc.models || []), usage.model].filter(Boolean)
+                }),
+                {}
+              )
+
+              // 打印原始的usage数据为JSON字符串，避免嵌套问题
+              logger.info(
+                `📊 === Stream Request Usage Summary === Model: ${body.model}, Total Events: ${allUsageData.length}, Usage Data: ${JSON.stringify(allUsageData)}`
+              )
+
+              // 一般一个请求只会使用一个模型，即使有多个usage事件也应该合并
+              // 计算总的usage
+              const finalUsage = {
+                input_tokens: totalUsage.input_tokens,
+                output_tokens: totalUsage.output_tokens,
+                cache_creation_input_tokens: totalUsage.cache_creation_input_tokens,
+                cache_read_input_tokens: totalUsage.cache_read_input_tokens,
+                model: allUsageData[allUsageData.length - 1].model || body.model // 使用最后一个模型或请求模型
+              }
+
+              // 如果有详细的cache_creation数据，合并它们
+              let totalEphemeral5m = 0
+              let totalEphemeral1h = 0
+              allUsageData.forEach((usage) => {
+                if (usage.cache_creation && typeof usage.cache_creation === 'object') {
+                  totalEphemeral5m += usage.cache_creation.ephemeral_5m_input_tokens || 0
+                  totalEphemeral1h += usage.cache_creation.ephemeral_1h_input_tokens || 0
+                }
+              })
+
+              // 如果有详细的缓存数据，添加到finalUsage
+              if (totalEphemeral5m > 0 || totalEphemeral1h > 0) {
+                finalUsage.cache_creation = {
+                  ephemeral_5m_input_tokens: totalEphemeral5m,
+                  ephemeral_1h_input_tokens: totalEphemeral1h
+                }
+                logger.info(
+                  '📊 Detailed cache creation breakdown:',
+                  JSON.stringify(finalUsage.cache_creation)
+                )
+              }
+
+              // 调用一次usageCallback记录合并后的数据
+              usageCallback(finalUsage)
+            }
+
+            // 提取5小时会话窗口状态
+            // 使用大小写不敏感的方式获取响应头
+            const get5hStatus = (responseHeaders) => {
+              if (!responseHeaders) {
+                return null
+              }
+              // HTTP头部名称不区分大小写，需要处理不同情况
+              return (
+                responseHeaders['anthropic-ratelimit-unified-5h-status'] ||
+                responseHeaders['Anthropic-Ratelimit-Unified-5h-Status'] ||
+                responseHeaders['ANTHROPIC-RATELIMIT-UNIFIED-5H-STATUS']
               )
             }
 
-            // 只有真实的 Claude Code 请求才更新 headers（流式请求）
+            const sessionWindowStatus = get5hStatus(stream.headers)
+            if (sessionWindowStatus) {
+              logger.info(
+                `📊 Session window status for account ${accountId}: ${sessionWindowStatus}`
+              )
+              // 保存会话窗口状态到账户数据
+              await claudeAccountService.updateSessionWindowStatus(accountId, sessionWindowStatus)
+            }
+
+            // 处理限流状态
+            if (rateLimitDetected || stream.statusCode === 429) {
+              // 提取限流重置时间戳
+              let rateLimitResetTimestamp = null
+              if (stream.headers && stream.headers['anthropic-ratelimit-unified-reset']) {
+                rateLimitResetTimestamp = parseInt(
+                  stream.headers['anthropic-ratelimit-unified-reset']
+                )
+                logger.info(
+                  `🕐 Extracted rate limit reset timestamp from stream: ${rateLimitResetTimestamp} (${new Date(rateLimitResetTimestamp * 1000).toISOString()})`
+                )
+              }
+
+              // 标记账号为限流状态并删除粘性会话映射
+              await unifiedClaudeScheduler.markAccountRateLimited(
+                accountId,
+                accountType,
+                sessionHash,
+                rateLimitResetTimestamp
+              )
+            } else if (stream.statusCode === 200) {
+              // 请求成功，清除401和500错误计数
+              await this.clearUnauthorizedErrors(accountId)
+              await claudeAccountService.clearInternalErrors(accountId)
+              // 如果请求成功，检查并移除限流状态
+              const isRateLimited = await unifiedClaudeScheduler.isAccountRateLimited(
+                accountId,
+                accountType
+              )
+              if (isRateLimited) {
+                await unifiedClaudeScheduler.removeAccountRateLimit(accountId, accountType)
+              }
+
+              // 如果流式请求成功，检查并移除过载状态
+              try {
+                const isOverloaded = await claudeAccountService.isAccountOverloaded(accountId)
+                if (isOverloaded) {
+                  await claudeAccountService.removeAccountOverload(accountId)
+                }
+              } catch (overloadError) {
+                logger.error(
+                  `❌ [Stream] Failed to check/remove overload status for account ${accountId}:`,
+                  overloadError
+                )
+              }
+
+              // 只有真实的 Claude Code 请求才更新 headers（流式请求）
+            }
+
+            logger.debug('🌊 Claude stream response with usage capture completed')
+            resolve()
+          })
+          // 错误处理
+          stream.on('error', async (error) => {
+            logger.error(
+              `❌ Claude stream request error (Account: ${account?.name || accountId}):`,
+              error.message,
+              {
+                code: error.code,
+                errno: error.errno,
+                syscall: error.syscall
+              }
+            )
+
+            // 根据错误类型提供更具体的错误信息
+            let errorMessage = 'Upstream request failed'
+            let statusCode = 500
+            if (error.code === 'ECONNRESET') {
+              errorMessage = 'Connection reset by Claude API server'
+              statusCode = 502
+            } else if (error.code === 'ENOTFOUND') {
+              errorMessage = 'Unable to resolve Claude API hostname'
+              statusCode = 502
+            } else if (error.code === 'ECONNREFUSED') {
+              errorMessage = 'Connection refused by Claude API server'
+              statusCode = 502
+            } else if (error.code === 'ETIMEDOUT') {
+              errorMessage = 'Connection timed out to Claude API server'
+              statusCode = 504
+            }
+
+            if (!responseStream.headersSent) {
+              responseStream.writeHead(statusCode, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                Connection: 'keep-alive'
+              })
+            }
+
+            if (!responseStream.destroyed) {
+              // 发送 SSE 错误事件
+              responseStream.write('event: error\n')
+              responseStream.write(
+                `data: ${JSON.stringify({
+                  error: errorMessage,
+                  code: error.code,
+                  timestamp: new Date().toISOString()
+                })}\n\n`
+              )
+              responseStream.end()
+            }
+            reject(error)
+          })
+
+          stream.on('timeout', async () => {
+            stream.close()
+            logger.error(
+              `❌ Claude stream request timeout | Account: ${account?.name || accountId}`
+            )
+
+            if (!responseStream.headersSent) {
+              responseStream.writeHead(504, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                Connection: 'keep-alive'
+              })
+            }
+            if (!responseStream.destroyed) {
+              // 发送 SSE 错误事件
+              responseStream.write('event: error\n')
+              responseStream.write(
+                `data: ${JSON.stringify({
+                  error: 'Request timeout',
+                  code: 'TIMEOUT',
+                  timestamp: new Date().toISOString()
+                })}\n\n`
+              )
+              responseStream.end()
+            }
+            reject(new Error('Request timeout'))
+          })
+
+          // 处理客户端断开连接
+          responseStream.on('close', () => {
+            logger.debug('🔌 Client disconnected, cleaning up stream')
+            if (!stream.destroyed) {
+              stream.close()
+            }
+          })
+        } catch (error) {
+          logger.error(`❌ Failed to setup HTTP/2 stream:`, error.message)
+
+          if (!responseStream.headersSent) {
+            responseStream.writeHead(500, {
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+              Connection: 'keep-alive'
+            })
           }
 
-          logger.debug('🌊 Claude stream response with usage capture completed')
-          resolve()
-        })
-      })
-
-      req.on('error', async (error) => {
-        logger.error(
-          `❌ Claude stream request error (Account: ${account?.name || accountId}):`,
-          error.message,
-          {
-            code: error.code,
-            errno: error.errno,
-            syscall: error.syscall
+          if (!responseStream.destroyed) {
+            responseStream.write('event: error\n')
+            responseStream.write(
+              `data: ${JSON.stringify({
+                error: 'Failed to establish HTTP/2 stream',
+                message: error.message,
+                timestamp: new Date().toISOString()
+              })}\n\n`
+            )
+            responseStream.end()
           }
-        )
-
-        // 根据错误类型提供更具体的错误信息
-        let errorMessage = 'Upstream request failed'
-        let statusCode = 500
-        if (error.code === 'ECONNRESET') {
-          errorMessage = 'Connection reset by Claude API server'
-          statusCode = 502
-        } else if (error.code === 'ENOTFOUND') {
-          errorMessage = 'Unable to resolve Claude API hostname'
-          statusCode = 502
-        } else if (error.code === 'ECONNREFUSED') {
-          errorMessage = 'Connection refused by Claude API server'
-          statusCode = 502
-        } else if (error.code === 'ETIMEDOUT') {
-          errorMessage = 'Connection timed out to Claude API server'
-          statusCode = 504
+          reject(error)
         }
-
-        if (!responseStream.headersSent) {
-          responseStream.writeHead(statusCode, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive'
-          })
-        }
-
-        if (!responseStream.destroyed) {
-          // 发送 SSE 错误事件
-          responseStream.write('event: error\n')
-          responseStream.write(
-            `data: ${JSON.stringify({
-              error: errorMessage,
-              code: error.code,
-              timestamp: new Date().toISOString()
-            })}\n\n`
-          )
-          responseStream.end()
-        }
-        reject(error)
-      })
-
-      req.on('timeout', async () => {
-        req.destroy()
-        logger.error(`❌ Claude stream request timeout | Account: ${account?.name || accountId}`)
-
-        if (!responseStream.headersSent) {
-          responseStream.writeHead(504, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive'
-          })
-        }
-        if (!responseStream.destroyed) {
-          // 发送 SSE 错误事件
-          responseStream.write('event: error\n')
-          responseStream.write(
-            `data: ${JSON.stringify({
-              error: 'Request timeout',
-              code: 'TIMEOUT',
-              timestamp: new Date().toISOString()
-            })}\n\n`
-          )
-          responseStream.end()
-        }
-        reject(new Error('Request timeout'))
-      })
-
-      // 处理客户端断开连接
-      responseStream.on('close', () => {
-        logger.debug('🔌 Client disconnected, cleaning up stream')
-        if (!req.destroyed) {
-          req.destroy()
-        }
-      })
-
-      // Dump最终请求（流式）
-      const finalUrl = `https://${options.hostname}:${options.port || 443}${options.path}`
-      requestDumper
-        .dumpFinalRequest({
-          model: body.model,
-          url: finalUrl,
-          headers: options.headers,
-          body,
-          accountId,
-          proxyInfo: proxyAgent ? { type: 'configured' } : null,
-          sessionHash
-        })
-        .catch((err) => {
-          logger.debug('Failed to dump stream final request:', err.message)
-        })
-
-      // 写入请求体
-      req.write(JSON.stringify(body))
-      req.end()
-    })
-  }
-
-  // 🌊 发送流式请求到Claude API
-  async _makeClaudeStreamRequest(
-    body,
-    accessToken,
-    proxyAgent,
-    clientHeaders,
-    responseStream,
-    requestOptions = {}
-  ) {
-    return new Promise((resolve, reject) => {
-      const url = new URL(this.claudeApiUrl)
-
-      // 不再使用 claudeCodeHeadersService，直接使用固定值
-
-      // 构建固定的请求头集合（严格控制）- 流式请求
-      const options = {
-        hostname: url.hostname,
-        port: url.port || 443,
-        path: url.pathname,
-        method: 'POST',
-        headers: {
-          ...claudeConstants.FIXED_HEADERS,
-          ...claudeConstants.STREAM_HEADER, // 添加流式请求专用header
-          Authorization: `Bearer ${accessToken}`,
-          'anthropic-version': this.apiVersion,
-          'User-Agent': claudeConstants.USER_AGENT
-        },
-        agent: proxyAgent,
-        timeout: config.requestTimeout || 600000
       }
 
-      // 使用 BetaHeaderManager 根据模型动态构建 beta header
-      const model = body.model || 'unknown'
-      const betaHeader = BetaHeaderManager.getBetaHeader(model, requestOptions, clientHeaders)
-
-      if (betaHeader) {
-        options.headers['anthropic-beta'] = betaHeader
-        // 如果有 beta header，添加 ?beta=true 查询参数
-        options.path += '?beta=true'
-      }
-
-      const req = https.request(options, (res) => {
-        // 设置响应头
-        responseStream.statusCode = res.statusCode
-        Object.keys(res.headers).forEach((key) => {
-          responseStream.setHeader(key, res.headers[key])
-        })
-
-        // 管道响应数据
-        res.pipe(responseStream)
-
-        res.on('end', () => {
-          logger.debug('🌊 Claude stream response completed')
-          resolve()
-        })
-      })
-
-      req.on('error', async (error) => {
-        logger.error(`❌ Claude stream request error:`, error.message, {
-          code: error.code,
-          errno: error.errno,
-          syscall: error.syscall
-        })
-
-        // 根据错误类型提供更具体的错误信息
-        let errorMessage = 'Upstream request failed'
-        let statusCode = 500
-        if (error.code === 'ECONNRESET') {
-          errorMessage = 'Connection reset by Claude API server'
-          statusCode = 502
-        } else if (error.code === 'ENOTFOUND') {
-          errorMessage = 'Unable to resolve Claude API hostname'
-          statusCode = 502
-        } else if (error.code === 'ECONNREFUSED') {
-          errorMessage = 'Connection refused by Claude API server'
-          statusCode = 502
-        } else if (error.code === 'ETIMEDOUT') {
-          errorMessage = 'Connection timed out to Claude API server'
-          statusCode = 504
-        }
-
-        if (!responseStream.headersSent) {
-          responseStream.writeHead(statusCode, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive'
-          })
-        }
-
-        if (!responseStream.destroyed) {
-          // 发送 SSE 错误事件
-          responseStream.write('event: error\n')
-          responseStream.write(
-            `data: ${JSON.stringify({
-              error: errorMessage,
-              code: error.code,
-              timestamp: new Date().toISOString()
-            })}\n\n`
-          )
-          responseStream.end()
-        }
-        reject(error)
-      })
-
-      req.on('timeout', async () => {
-        req.destroy()
-        logger.error(`❌ Claude stream request timeout`)
-
-        if (!responseStream.headersSent) {
-          responseStream.writeHead(504, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive'
-          })
-        }
-        if (!responseStream.destroyed) {
-          // 发送 SSE 错误事件
-          responseStream.write('event: error\n')
-          responseStream.write(
-            `data: ${JSON.stringify({
-              error: 'Request timeout',
-              code: 'TIMEOUT',
-              timestamp: new Date().toISOString()
-            })}\n\n`
-          )
-          responseStream.end()
-        }
-        reject(new Error('Request timeout'))
-      })
-
-      // 处理客户端断开连接
-      responseStream.on('close', () => {
-        logger.debug('🔌 Client disconnected, cleaning up stream')
-        if (!req.destroyed) {
-          req.destroy()
-        }
-      })
-
-      // Dump最终请求（流式 - _makeClaudeStreamRequest）
-      const finalUrl = `https://${options.hostname}:${options.port || 443}${options.path}`
-      requestDumper
-        .dumpFinalRequest({
-          model: body.model,
-          url: finalUrl,
-          headers: options.headers,
-          body,
-          accountId: null, // 该方法没有accountId参数
-          proxyInfo: proxyAgent ? { type: 'configured' } : null,
-          sessionHash: sessionHelper.generateSessionHash(body)
-        })
-        .catch((err) => {
-          logger.debug('Failed to dump stream request:', err.message)
-        })
-
-      // 写入请求体
-      req.write(JSON.stringify(body))
-      req.end()
+      // 执行异步设置
+      setupStream()
     })
   }
 

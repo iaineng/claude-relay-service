@@ -322,45 +322,89 @@ class Http2Client {
   }
 
   /**
-   * 发送HTTP/2流式请求
+   * 发送HTTP/2 SSE流式请求（专为SSE响应设计）
    * @param {string} url - 请求URL
    * @param {object} options - 请求选项
-   * @returns {http2.ClientHttp2Stream} HTTP/2流
+   * @param {function} onResponse - 响应回调 (statusCode, headers)
+   * @returns {Promise<http2.ClientHttp2Stream>} HTTP/2流包装对象
    */
-  async stream(url, options = {}) {
+  async streamSSE(url, options = {}) {
     const parsedUrl = new URL(url)
     const { hostname } = parsedUrl
     const pathname = parsedUrl.pathname + parsedUrl.search
 
-    // 获取或创建会话
-    const session = await this.getSession(hostname, {
-      port: parsedUrl.port || 443,
-      agent: options.agent,
-      timeout: options.timeout
-    })
+    try {
+      // 获取或创建会话
+      const session = await this.getSession(hostname, {
+        port: parsedUrl.port || 443,
+        agent: options.agent,
+        timeout: options.timeout
+      })
 
-    // 构建HTTP/2请求头
-    const headers = {
-      ':method': options.method || 'GET',
-      ':path': pathname,
-      ':scheme': 'https',
-      ':authority': hostname,
-      ...this.normalizeHeaders(options.headers || {})
+      // 构建HTTP/2请求头（SSE专用）
+      const headers = {
+        ':method': options.method || 'POST',
+        ':path': pathname,
+        ':scheme': 'https',
+        ':authority': hostname,
+        ...this.normalizeHeaders(options.headers || {})
+      }
+
+      // 确保包含SSE相关的头部
+      if (!headers['accept']) {
+        headers['accept'] = 'text/event-stream'
+      }
+
+      logger.debug(`🌊 HTTP/2 SSE stream request: ${headers[':method']} ${url}`)
+
+      // 创建流
+      const stream = session.request(headers)
+
+      // 包装流对象，添加额外的属性和方法
+      const wrappedStream = Object.create(stream)
+      wrappedStream.statusCode = null
+      wrappedStream.headers = {}
+      wrappedStream.session = session
+
+      // 监听响应头
+      stream.once('response', (responseHeaders) => {
+        wrappedStream.statusCode = responseHeaders[':status']
+        // 过滤掉HTTP/2伪头部
+        for (const [key, value] of Object.entries(responseHeaders)) {
+          if (!key.startsWith(':')) {
+            wrappedStream.headers[key] = value
+          }
+        }
+        logger.debug(`📥 HTTP/2 SSE response status: ${wrappedStream.statusCode}`)
+
+        // 调用响应回调（如果提供）
+        if (options.onResponse) {
+          options.onResponse(wrappedStream.statusCode, wrappedStream.headers)
+        }
+      })
+
+      // 设置超时
+      if (options.timeout) {
+        stream.setTimeout(options.timeout)
+        stream.on('timeout', () => {
+          logger.error(`⏱️ HTTP/2 SSE stream timeout after ${options.timeout}ms`)
+          stream.close(http2.constants.NGHTTP2_CANCEL)
+        })
+      }
+
+      // 写入请求体（如果有）
+      if (options.body) {
+        const bodyData =
+          typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
+        stream.write(bodyData)
+      }
+      stream.end()
+
+      return wrappedStream
+    } catch (error) {
+      logger.error(`❌ HTTP/2 SSE stream request failed: ${error.message}`)
+      throw error
     }
-
-    logger.debug(`🌊 HTTP/2 stream request: ${headers[':method']} ${url}`)
-
-    // 创建流
-    const stream = session.request(headers)
-
-    // 写入请求体（如果有）
-    if (options.body) {
-      const bodyData =
-        typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
-      stream.end(bodyData)
-    }
-
-    return stream
   }
 
   /**
