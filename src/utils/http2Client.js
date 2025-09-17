@@ -1,4 +1,5 @@
 const http2 = require('http2')
+const http = require('http')
 const tls = require('tls')
 const { URL } = require('url')
 const logger = require('./logger')
@@ -97,84 +98,107 @@ class Http2Client {
    */
   createSession(hostname, options = {}) {
     return new Promise((resolve, reject) => {
-      const connectOptions = {
-        ...options,
-        ALPNProtocols: ['h2'],
-        servername: hostname
-      }
+      const targetPort = options.port || 443
+      const url = `https://${hostname}:${targetPort}`
 
-      // 如果有代理agent，需要特殊处理
-      if (options.agent) {
-        // 使用代理的createConnection方法建立隧道
-        connectOptions.createConnection = (_authority, _connOptions) =>
-          new Promise((connResolve, connReject) => {
-            // 创建一个临时的回调函数处理代理连接
-            const handleProxyConnection = (err, sock) => {
-              if (err) {
-                connReject(err)
-                return
-              }
+      // 如果有代理agent，手动建立CONNECT隧道
+      if (options.agent && options.agent.proxy) {
+        // 从agent中提取代理信息
+        const proxyUrl = new URL(options.agent.proxy.href || options.agent.proxy)
+        const proxyHost = proxyUrl.hostname
+        const proxyPort = proxyUrl.port || (proxyUrl.protocol === 'https:' ? 443 : 80)
 
-              // 在代理隧道上建立TLS连接
+        logger.debug(
+          `🔧 Creating HTTP/2 session through proxy ${proxyHost}:${proxyPort} to ${hostname}:${targetPort}`
+        )
+
+        // 建立CONNECT隧道
+        const connectReq = http.request({
+          method: 'CONNECT',
+          host: proxyHost,
+          port: proxyPort,
+          path: `${hostname}:${targetPort}`,
+          headers: {
+            Host: `${hostname}:${targetPort}`
+          },
+          // 如果代理需要认证
+          auth: proxyUrl.auth || undefined
+        })
+
+        connectReq.on('connect', (res, socket, _head) => {
+          if (res.statusCode !== 200) {
+            socket.destroy()
+            reject(new Error(`Proxy CONNECT failed with status ${res.statusCode}`))
+            return
+          }
+
+          logger.debug(`🚇 CONNECT tunnel established to ${hostname}`)
+
+          // 在隧道socket上建立HTTP/2连接
+          const session = http2.connect(url, {
+            createConnection: () => {
+              // 在原始socket上建立TLS连接
               const tlsSocket = tls.connect({
-                socket: sock,
+                socket,
                 servername: hostname,
                 ALPNProtocols: ['h2']
               })
-
-              tlsSocket.once('secureConnect', () => {
-                connResolve(tlsSocket)
-              })
-
-              tlsSocket.once('error', connReject)
-            }
-
-            try {
-              // 代理agent会处理连接 - 尝试同步和异步两种模式
-              const result = options.agent.createConnection(
-                { host: hostname, port: options.port || 443 },
-                handleProxyConnection
-              )
-
-              // 如果同步返回了socket，处理它
-              if (result && typeof result.on === 'function') {
-                // 在代理隧道上建立TLS连接
-                const tlsSocket = tls.connect({
-                  socket: result,
-                  servername: hostname,
-                  ALPNProtocols: ['h2']
-                })
-
-                tlsSocket.once('secureConnect', () => {
-                  connResolve(tlsSocket)
-                })
-
-                tlsSocket.once('error', connReject)
-              }
-            } catch (error) {
-              connReject(error)
+              return tlsSocket
             }
           })
+
+          session.once('connect', () => {
+            logger.info(`✅ HTTP/2 session connected to ${hostname} through proxy`)
+            resolve(session)
+          })
+
+          session.once('error', (err) => {
+            logger.error(
+              `❌ Failed to create HTTP/2 session through proxy for ${hostname}:`,
+              err.message
+            )
+            reject(err)
+          })
+
+          // 设置超时
+          session.setTimeout(options.timeout || 30000, () => {
+            session.close()
+            reject(new Error(`HTTP/2 session timeout for ${hostname}`))
+          })
+        })
+
+        connectReq.on('error', (err) => {
+          logger.error(`❌ Failed to establish CONNECT tunnel:`, err.message)
+          reject(err)
+        })
+
+        connectReq.end()
+      } else {
+        // 直连模式
+        const connectOptions = {
+          ...options,
+          ALPNProtocols: ['h2'],
+          servername: hostname
+        }
+
+        const session = http2.connect(url, connectOptions)
+
+        session.once('connect', () => {
+          logger.info(`✅ HTTP/2 session connected to ${hostname}`)
+          resolve(session)
+        })
+
+        session.once('error', (err) => {
+          logger.error(`❌ Failed to create HTTP/2 session for ${hostname}:`, err.message)
+          reject(err)
+        })
+
+        // 设置超时
+        session.setTimeout(options.timeout || 30000, () => {
+          session.close()
+          reject(new Error(`HTTP/2 session timeout for ${hostname}`))
+        })
       }
-
-      const url = `https://${hostname}:${options.port || 443}`
-      const session = http2.connect(url, connectOptions)
-
-      session.once('connect', () => {
-        logger.info(`✅ HTTP/2 session connected to ${hostname}`)
-        resolve(session)
-      })
-
-      session.once('error', (err) => {
-        logger.error(`❌ Failed to create HTTP/2 session for ${hostname}:`, err.message)
-        reject(err)
-      })
-
-      // 设置超时
-      session.setTimeout(options.timeout || 30000, () => {
-        session.close()
-        reject(new Error(`HTTP/2 session timeout for ${hostname}`))
-      })
     })
   }
 
