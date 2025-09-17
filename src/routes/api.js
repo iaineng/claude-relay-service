@@ -608,7 +608,8 @@ async function handleMessagesRequest(req, res) {
       // 设置响应头，避免 Content-Length 和 Transfer-Encoding 冲突
       const skipHeaders = ['content-encoding', 'transfer-encoding', 'content-length']
       Object.keys(response.headers).forEach((key) => {
-        if (!skipHeaders.includes(key.toLowerCase())) {
+        // 过滤掉HTTP/2伪头部（以:开头）和需要跳过的头部
+        if (!key.startsWith(':') && !skipHeaders.includes(key.toLowerCase())) {
           res.setHeader(key, response.headers[key])
         }
       })
@@ -984,7 +985,8 @@ router.post('/v1/messages/count_tokens', authenticateApiKey, async (req, res) =>
     // 设置响应头
     const skipHeaders = ['content-encoding', 'transfer-encoding', 'content-length']
     Object.keys(response.headers).forEach((key) => {
-      if (!skipHeaders.includes(key.toLowerCase())) {
+      // 过滤掉HTTP/2伪头部（以:开头）和需要跳过的头部
+      if (!key.startsWith(':') && !skipHeaders.includes(key.toLowerCase())) {
         res.setHeader(key, response.headers[key])
       }
     })
