@@ -241,7 +241,13 @@ class Http2Client {
         // 处理响应头
         stream.on('response', (hdrs) => {
           statusCode = hdrs[':status']
-          responseHeaders = hdrs
+          // 过滤掉HTTP/2伪头部（以:开头的）
+          responseHeaders = {}
+          for (const [key, value] of Object.entries(hdrs)) {
+            if (!key.startsWith(':')) {
+              responseHeaders[key] = value
+            }
+          }
           logger.debug(`📥 HTTP/2 response status: ${statusCode}`)
         })
 
