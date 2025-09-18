@@ -40,8 +40,9 @@ class BetaHeaderManager {
     'oauth-2025-04-20', // 第二位
     'interleaved-thinking-2025-05-14', // 第三位
     'fine-grained-tool-streaming-2025-05-14', // 第四位
-    'context-1m-2025-08-07', // 第五位
-    'token-counting-2024-11-01' // 第六位（最后）
+    'computer-use-2025-01-24', // 第五位
+    'context-1m-2025-08-07', // 第六位
+    'token-counting-2024-11-01' // 第七位（最后）
   ]
 
   /**
@@ -69,6 +70,12 @@ class BetaHeaderManager {
     if (clientBetaHeader && clientBetaHeader.includes('context-1m-2025-08-07')) {
       features.add('context-1m-2025-08-07')
       logger.info('📌 Adding context-1m-2025-08-07 from client request')
+    }
+
+    // 检查客户端是否请求 computer-use-2025-01-24
+    if (clientBetaHeader && clientBetaHeader.includes('computer-use-2025-01-24')) {
+      features.add('computer-use-2025-01-24')
+      logger.info('🖥️ Adding computer-use-2025-01-24 from client request')
     }
 
     // 检查是否是 count_tokens 请求，如果是则添加 token-counting-2024-11-01
