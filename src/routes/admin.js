@@ -2257,6 +2257,9 @@ router.delete('/claude-accounts/:accountId', authenticateAdmin, async (req, res)
   try {
     const { accountId } = req.params
 
+    // 自动解绑所有绑定的 API Keys
+    const unboundCount = await apiKeyService.unbindAccountFromAllKeys(accountId, 'claude')
+
     // 获取账户信息以检查是否在分组中
     const account = await claudeAccountService.getAccount(accountId)
     if (account && account.accountType === 'group') {
@@ -2268,8 +2271,17 @@ router.delete('/claude-accounts/:accountId', authenticateAdmin, async (req, res)
 
     await claudeAccountService.deleteAccount(accountId)
 
-    logger.success(`🗑️ Admin deleted Claude account: ${accountId}`)
-    return res.json({ success: true, message: 'Claude account deleted successfully' })
+    let message = 'Claude账号已成功删除'
+    if (unboundCount > 0) {
+      message += `，${unboundCount} 个 API Key 已切换为共享池模式`
+    }
+
+    logger.success(`🗑️ Admin deleted Claude account: ${accountId}, unbound ${unboundCount} keys`)
+    return res.json({
+      success: true,
+      message,
+      unboundKeys: unboundCount
+    })
   } catch (error) {
     logger.error('❌ Failed to delete Claude account:', error)
     return res
@@ -2635,6 +2647,9 @@ router.delete('/claude-console-accounts/:accountId', authenticateAdmin, async (r
   try {
     const { accountId } = req.params
 
+    // 自动解绑所有绑定的 API Keys
+    const unboundCount = await apiKeyService.unbindAccountFromAllKeys(accountId, 'claude-console')
+
     // 获取账户信息以检查是否在分组中
     const account = await claudeConsoleAccountService.getAccount(accountId)
     if (account && account.accountType === 'group') {
@@ -2646,8 +2661,19 @@ router.delete('/claude-console-accounts/:accountId', authenticateAdmin, async (r
 
     await claudeConsoleAccountService.deleteAccount(accountId)
 
-    logger.success(`🗑️ Admin deleted Claude Console account: ${accountId}`)
-    return res.json({ success: true, message: 'Claude Console account deleted successfully' })
+    let message = 'Claude Console账号已成功删除'
+    if (unboundCount > 0) {
+      message += `，${unboundCount} 个 API Key 已切换为共享池模式`
+    }
+
+    logger.success(
+      `🗑️ Admin deleted Claude Console account: ${accountId}, unbound ${unboundCount} keys`
+    )
+    return res.json({
+      success: true,
+      message,
+      unboundKeys: unboundCount
+    })
   } catch (error) {
     logger.error('❌ Failed to delete Claude Console account:', error)
     return res
@@ -3029,6 +3055,9 @@ router.delete('/ccr-accounts/:accountId', authenticateAdmin, async (req, res) =>
   try {
     const { accountId } = req.params
 
+    // 尝试自动解绑（CCR账户实际上不会绑定API Key，但保持代码一致性）
+    const unboundCount = await apiKeyService.unbindAccountFromAllKeys(accountId, 'ccr')
+
     // 获取账户信息以检查是否在分组中
     const account = await ccrAccountService.getAccount(accountId)
     if (account && account.accountType === 'group') {
@@ -3040,8 +3069,18 @@ router.delete('/ccr-accounts/:accountId', authenticateAdmin, async (req, res) =>
 
     await ccrAccountService.deleteAccount(accountId)
 
+    let message = 'CCR账号已成功删除'
+    if (unboundCount > 0) {
+      // 理论上不会发生，但保持消息格式一致
+      message += `，${unboundCount} 个 API Key 已切换为共享池模式`
+    }
+
     logger.success(`🗑️ Admin deleted CCR account: ${accountId}`)
-    return res.json({ success: true, message: 'CCR account deleted successfully' })
+    return res.json({
+      success: true,
+      message,
+      unboundKeys: unboundCount
+    })
   } catch (error) {
     logger.error('❌ Failed to delete CCR account:', error)
     return res.status(500).json({ error: 'Failed to delete CCR account', message: error.message })
@@ -3385,6 +3424,9 @@ router.delete('/bedrock-accounts/:accountId', authenticateAdmin, async (req, res
   try {
     const { accountId } = req.params
 
+    // 自动解绑所有绑定的 API Keys
+    const unboundCount = await apiKeyService.unbindAccountFromAllKeys(accountId, 'bedrock')
+
     const result = await bedrockAccountService.deleteAccount(accountId)
 
     if (!result.success) {
@@ -3393,8 +3435,17 @@ router.delete('/bedrock-accounts/:accountId', authenticateAdmin, async (req, res
         .json({ error: 'Failed to delete Bedrock account', message: result.error })
     }
 
-    logger.success(`🗑️ Admin deleted Bedrock account: ${accountId}`)
-    return res.json({ success: true, message: 'Bedrock account deleted successfully' })
+    let message = 'Bedrock账号已成功删除'
+    if (unboundCount > 0) {
+      message += `，${unboundCount} 个 API Key 已切换为共享池模式`
+    }
+
+    logger.success(`🗑️ Admin deleted Bedrock account: ${accountId}, unbound ${unboundCount} keys`)
+    return res.json({
+      success: true,
+      message,
+      unboundKeys: unboundCount
+    })
   } catch (error) {
     logger.error('❌ Failed to delete Bedrock account:', error)
     return res
@@ -3831,6 +3882,9 @@ router.delete('/gemini-accounts/:accountId', authenticateAdmin, async (req, res)
   try {
     const { accountId } = req.params
 
+    // 自动解绑所有绑定的 API Keys
+    const unboundCount = await apiKeyService.unbindAccountFromAllKeys(accountId, 'gemini')
+
     // 获取账户信息以检查是否在分组中
     const account = await geminiAccountService.getAccount(accountId)
     if (account && account.accountType === 'group') {
@@ -3842,8 +3896,17 @@ router.delete('/gemini-accounts/:accountId', authenticateAdmin, async (req, res)
 
     await geminiAccountService.deleteAccount(accountId)
 
-    logger.success(`🗑️ Admin deleted Gemini account: ${accountId}`)
-    return res.json({ success: true, message: 'Gemini account deleted successfully' })
+    let message = 'Gemini账号已成功删除'
+    if (unboundCount > 0) {
+      message += `，${unboundCount} 个 API Key 已切换为共享池模式`
+    }
+
+    logger.success(`🗑️ Admin deleted Gemini account: ${accountId}, unbound ${unboundCount} keys`)
+    return res.json({
+      success: true,
+      message,
+      unboundKeys: unboundCount
+    })
   } catch (error) {
     logger.error('❌ Failed to delete Gemini account:', error)
     return res.status(500).json({ error: 'Failed to delete account', message: error.message })
@@ -3985,6 +4048,198 @@ router.get('/accounts/:accountId/usage-stats', authenticateAdmin, async (req, re
     return res.status(500).json({
       success: false,
       error: 'Failed to get account usage stats',
+      message: error.message
+    })
+  }
+})
+
+// 获取账号近30天使用历史
+router.get('/accounts/:accountId/usage-history', authenticateAdmin, async (req, res) => {
+  try {
+    const { accountId } = req.params
+    const { platform = 'claude', days = 30 } = req.query
+
+    const allowedPlatforms = ['claude', 'claude-console', 'openai', 'openai-responses', 'gemini']
+    if (!allowedPlatforms.includes(platform)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Unsupported account platform'
+      })
+    }
+
+    const accountTypeMap = {
+      openai: 'openai',
+      'openai-responses': 'openai-responses'
+    }
+
+    const fallbackModelMap = {
+      claude: 'claude-3-5-sonnet-20241022',
+      'claude-console': 'claude-3-5-sonnet-20241022',
+      openai: 'gpt-4o-mini-2024-07-18',
+      'openai-responses': 'gpt-4o-mini-2024-07-18',
+      gemini: 'gemini-1.5-flash'
+    }
+
+    const client = redis.getClientSafe()
+    const fallbackModel = fallbackModelMap[platform] || 'unknown'
+    const daysCount = Math.min(Math.max(parseInt(days, 10) || 30, 1), 60)
+
+    // 获取概览统计数据
+    const accountUsageStats = await redis.getAccountUsageStats(
+      accountId,
+      accountTypeMap[platform] || null
+    )
+
+    const history = []
+    let totalCost = 0
+    let totalRequests = 0
+    let totalTokens = 0
+
+    let highestCostDay = null
+    let highestRequestDay = null
+
+    const sumModelCostsForDay = async (dateKey) => {
+      const modelPattern = `account_usage:model:daily:${accountId}:*:${dateKey}`
+      const modelKeys = await client.keys(modelPattern)
+      let summedCost = 0
+
+      if (modelKeys.length === 0) {
+        return summedCost
+      }
+
+      for (const modelKey of modelKeys) {
+        const modelParts = modelKey.split(':')
+        const modelName = modelParts[4] || 'unknown'
+        const modelData = await client.hgetall(modelKey)
+        if (!modelData || Object.keys(modelData).length === 0) {
+          continue
+        }
+
+        const usage = {
+          input_tokens: parseInt(modelData.inputTokens) || 0,
+          output_tokens: parseInt(modelData.outputTokens) || 0,
+          cache_creation_input_tokens: parseInt(modelData.cacheCreateTokens) || 0,
+          cache_read_input_tokens: parseInt(modelData.cacheReadTokens) || 0
+        }
+
+        const costResult = CostCalculator.calculateCost(usage, modelName)
+        summedCost += costResult.costs.total
+      }
+
+      return summedCost
+    }
+
+    const today = new Date()
+
+    for (let offset = daysCount - 1; offset >= 0; offset--) {
+      const date = new Date(today)
+      date.setDate(date.getDate() - offset)
+
+      const tzDate = redis.getDateInTimezone(date)
+      const dateKey = redis.getDateStringInTimezone(date)
+      const monthLabel = String(tzDate.getUTCMonth() + 1).padStart(2, '0')
+      const dayLabel = String(tzDate.getUTCDate()).padStart(2, '0')
+      const label = `${monthLabel}/${dayLabel}`
+
+      const dailyKey = `account_usage:daily:${accountId}:${dateKey}`
+      const dailyData = await client.hgetall(dailyKey)
+
+      const inputTokens = parseInt(dailyData?.inputTokens) || 0
+      const outputTokens = parseInt(dailyData?.outputTokens) || 0
+      const cacheCreateTokens = parseInt(dailyData?.cacheCreateTokens) || 0
+      const cacheReadTokens = parseInt(dailyData?.cacheReadTokens) || 0
+      const allTokens =
+        parseInt(dailyData?.allTokens) ||
+        inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens
+      const requests = parseInt(dailyData?.requests) || 0
+
+      let cost = await sumModelCostsForDay(dateKey)
+
+      if (cost === 0 && allTokens > 0) {
+        const fallbackUsage = {
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          cache_creation_input_tokens: cacheCreateTokens,
+          cache_read_input_tokens: cacheReadTokens
+        }
+        const fallbackResult = CostCalculator.calculateCost(fallbackUsage, fallbackModel)
+        cost = fallbackResult.costs.total
+      }
+
+      const normalizedCost = Math.round(cost * 1_000_000) / 1_000_000
+
+      totalCost += normalizedCost
+      totalRequests += requests
+      totalTokens += allTokens
+
+      if (!highestCostDay || normalizedCost > highestCostDay.cost) {
+        highestCostDay = {
+          date: dateKey,
+          label,
+          cost: normalizedCost,
+          formattedCost: CostCalculator.formatCost(normalizedCost)
+        }
+      }
+
+      if (!highestRequestDay || requests > highestRequestDay.requests) {
+        highestRequestDay = {
+          date: dateKey,
+          label,
+          requests
+        }
+      }
+
+      history.push({
+        date: dateKey,
+        label,
+        cost: normalizedCost,
+        formattedCost: CostCalculator.formatCost(normalizedCost),
+        requests,
+        tokens: allTokens
+      })
+    }
+
+    const avgDailyCost = daysCount > 0 ? totalCost / daysCount : 0
+    const avgDailyRequests = daysCount > 0 ? totalRequests / daysCount : 0
+    const avgDailyTokens = daysCount > 0 ? totalTokens / daysCount : 0
+
+    const todayData = history.length > 0 ? history[history.length - 1] : null
+
+    return res.json({
+      success: true,
+      data: {
+        history,
+        summary: {
+          days: daysCount,
+          totalCost,
+          totalCostFormatted: CostCalculator.formatCost(totalCost),
+          totalRequests,
+          totalTokens,
+          avgDailyCost,
+          avgDailyCostFormatted: CostCalculator.formatCost(avgDailyCost),
+          avgDailyRequests,
+          avgDailyTokens,
+          today: todayData
+            ? {
+                date: todayData.date,
+                cost: todayData.cost,
+                costFormatted: todayData.formattedCost,
+                requests: todayData.requests,
+                tokens: todayData.tokens
+              }
+            : null,
+          highestCostDay,
+          highestRequestDay
+        },
+        overview: accountUsageStats,
+        generatedAt: new Date().toISOString()
+      }
+    })
+  } catch (error) {
+    logger.error('❌ Failed to get account usage history:', error)
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to get account usage history',
       message: error.message
     })
   }
@@ -5093,6 +5348,345 @@ router.get('/api-keys/:keyId/model-stats', authenticateAdmin, async (req, res) =
     return res
       .status(500)
       .json({ error: 'Failed to get API key model stats', message: error.message })
+  }
+})
+
+// 获取按账号分组的使用趋势
+router.get('/account-usage-trend', authenticateAdmin, async (req, res) => {
+  try {
+    const { granularity = 'day', group = 'claude', days = 7, startDate, endDate } = req.query
+
+    const allowedGroups = ['claude', 'openai', 'gemini']
+    if (!allowedGroups.includes(group)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid account group'
+      })
+    }
+
+    const groupLabels = {
+      claude: 'Claude账户',
+      openai: 'OpenAI账户',
+      gemini: 'Gemini账户'
+    }
+
+    // 拉取各平台账号列表
+    let accounts = []
+    if (group === 'claude') {
+      const [claudeAccounts, claudeConsoleAccounts] = await Promise.all([
+        claudeAccountService.getAllAccounts(),
+        claudeConsoleAccountService.getAllAccounts()
+      ])
+
+      accounts = [
+        ...claudeAccounts.map((account) => {
+          const id = String(account.id || '')
+          const shortId = id ? id.slice(0, 8) : '未知'
+          return {
+            id,
+            name: account.name || account.email || `Claude账号 ${shortId}`,
+            platform: 'claude'
+          }
+        }),
+        ...claudeConsoleAccounts.map((account) => {
+          const id = String(account.id || '')
+          const shortId = id ? id.slice(0, 8) : '未知'
+          return {
+            id,
+            name: account.name || `Console账号 ${shortId}`,
+            platform: 'claude-console'
+          }
+        })
+      ]
+    } else if (group === 'openai') {
+      const [openaiAccounts, openaiResponsesAccounts] = await Promise.all([
+        openaiAccountService.getAllAccounts(),
+        openaiResponsesAccountService.getAllAccounts(true)
+      ])
+
+      accounts = [
+        ...openaiAccounts.map((account) => {
+          const id = String(account.id || '')
+          const shortId = id ? id.slice(0, 8) : '未知'
+          return {
+            id,
+            name: account.name || account.email || `OpenAI账号 ${shortId}`,
+            platform: 'openai'
+          }
+        }),
+        ...openaiResponsesAccounts.map((account) => {
+          const id = String(account.id || '')
+          const shortId = id ? id.slice(0, 8) : '未知'
+          return {
+            id,
+            name: account.name || `Responses账号 ${shortId}`,
+            platform: 'openai-responses'
+          }
+        })
+      ]
+    } else if (group === 'gemini') {
+      const geminiAccounts = await geminiAccountService.getAllAccounts()
+      accounts = geminiAccounts.map((account) => {
+        const id = String(account.id || '')
+        const shortId = id ? id.slice(0, 8) : '未知'
+        return {
+          id,
+          name: account.name || account.email || `Gemini账号 ${shortId}`,
+          platform: 'gemini'
+        }
+      })
+    }
+
+    if (!accounts || accounts.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+        granularity,
+        group,
+        groupLabel: groupLabels[group],
+        topAccounts: [],
+        totalAccounts: 0
+      })
+    }
+
+    const accountMap = new Map()
+    const accountIdSet = new Set()
+    for (const account of accounts) {
+      accountMap.set(account.id, {
+        name: account.name,
+        platform: account.platform
+      })
+      accountIdSet.add(account.id)
+    }
+
+    const fallbackModelByGroup = {
+      claude: 'claude-3-5-sonnet-20241022',
+      openai: 'gpt-4o-mini-2024-07-18',
+      gemini: 'gemini-1.5-flash'
+    }
+    const fallbackModel = fallbackModelByGroup[group] || 'unknown'
+
+    const client = redis.getClientSafe()
+    const trendData = []
+    const accountCostTotals = new Map()
+
+    const sumModelCosts = async (accountId, period, timeKey) => {
+      const modelPattern = `account_usage:model:${period}:${accountId}:*:${timeKey}`
+      const modelKeys = await client.keys(modelPattern)
+      let totalCost = 0
+
+      for (const modelKey of modelKeys) {
+        const modelData = await client.hgetall(modelKey)
+        if (!modelData) {
+          continue
+        }
+
+        const parts = modelKey.split(':')
+        if (parts.length < 5) {
+          continue
+        }
+
+        const modelName = parts[4]
+        const usage = {
+          input_tokens: parseInt(modelData.inputTokens) || 0,
+          output_tokens: parseInt(modelData.outputTokens) || 0,
+          cache_creation_input_tokens: parseInt(modelData.cacheCreateTokens) || 0,
+          cache_read_input_tokens: parseInt(modelData.cacheReadTokens) || 0
+        }
+
+        const costResult = CostCalculator.calculateCost(usage, modelName)
+        totalCost += costResult.costs.total
+      }
+
+      return totalCost
+    }
+
+    if (granularity === 'hour') {
+      let startTime
+      let endTime
+
+      if (startDate && endDate) {
+        startTime = new Date(startDate)
+        endTime = new Date(endDate)
+      } else {
+        endTime = new Date()
+        startTime = new Date(endTime.getTime() - 24 * 60 * 60 * 1000)
+      }
+
+      const currentHour = new Date(startTime)
+      currentHour.setMinutes(0, 0, 0)
+
+      while (currentHour <= endTime) {
+        const tzCurrentHour = redis.getDateInTimezone(currentHour)
+        const dateStr = redis.getDateStringInTimezone(currentHour)
+        const hour = String(tzCurrentHour.getUTCHours()).padStart(2, '0')
+        const hourKey = `${dateStr}:${hour}`
+
+        const tzDateForLabel = redis.getDateInTimezone(currentHour)
+        const monthLabel = String(tzDateForLabel.getUTCMonth() + 1).padStart(2, '0')
+        const dayLabel = String(tzDateForLabel.getUTCDate()).padStart(2, '0')
+        const hourLabel = String(tzDateForLabel.getUTCHours()).padStart(2, '0')
+
+        const hourData = {
+          hour: currentHour.toISOString(),
+          label: `${monthLabel}/${dayLabel} ${hourLabel}:00`,
+          accounts: {}
+        }
+
+        const pattern = `account_usage:hourly:*:${hourKey}`
+        const keys = await client.keys(pattern)
+
+        for (const key of keys) {
+          const match = key.match(/account_usage:hourly:(.+?):\d{4}-\d{2}-\d{2}:\d{2}/)
+          if (!match) {
+            continue
+          }
+
+          const accountId = match[1]
+          if (!accountIdSet.has(accountId)) {
+            continue
+          }
+
+          const data = await client.hgetall(key)
+          if (!data) {
+            continue
+          }
+
+          const inputTokens = parseInt(data.inputTokens) || 0
+          const outputTokens = parseInt(data.outputTokens) || 0
+          const cacheCreateTokens = parseInt(data.cacheCreateTokens) || 0
+          const cacheReadTokens = parseInt(data.cacheReadTokens) || 0
+          const allTokens =
+            parseInt(data.allTokens) ||
+            inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens
+          const requests = parseInt(data.requests) || 0
+
+          let cost = await sumModelCosts(accountId, 'hourly', hourKey)
+
+          if (cost === 0 && allTokens > 0) {
+            const fallbackUsage = {
+              input_tokens: inputTokens,
+              output_tokens: outputTokens,
+              cache_creation_input_tokens: cacheCreateTokens,
+              cache_read_input_tokens: cacheReadTokens
+            }
+            const fallbackResult = CostCalculator.calculateCost(fallbackUsage, fallbackModel)
+            cost = fallbackResult.costs.total
+          }
+
+          const formattedCost = CostCalculator.formatCost(cost)
+          const accountInfo = accountMap.get(accountId)
+
+          hourData.accounts[accountId] = {
+            name: accountInfo ? accountInfo.name : `账号 ${accountId.slice(0, 8)}`,
+            cost,
+            formattedCost,
+            requests
+          }
+
+          accountCostTotals.set(accountId, (accountCostTotals.get(accountId) || 0) + cost)
+        }
+
+        trendData.push(hourData)
+        currentHour.setHours(currentHour.getHours() + 1)
+      }
+    } else {
+      const daysCount = parseInt(days) || 7
+      const today = new Date()
+
+      for (let i = 0; i < daysCount; i++) {
+        const date = new Date(today)
+        date.setDate(date.getDate() - i)
+        const dateStr = redis.getDateStringInTimezone(date)
+
+        const dayData = {
+          date: dateStr,
+          accounts: {}
+        }
+
+        const pattern = `account_usage:daily:*:${dateStr}`
+        const keys = await client.keys(pattern)
+
+        for (const key of keys) {
+          const match = key.match(/account_usage:daily:(.+?):\d{4}-\d{2}-\d{2}/)
+          if (!match) {
+            continue
+          }
+
+          const accountId = match[1]
+          if (!accountIdSet.has(accountId)) {
+            continue
+          }
+
+          const data = await client.hgetall(key)
+          if (!data) {
+            continue
+          }
+
+          const inputTokens = parseInt(data.inputTokens) || 0
+          const outputTokens = parseInt(data.outputTokens) || 0
+          const cacheCreateTokens = parseInt(data.cacheCreateTokens) || 0
+          const cacheReadTokens = parseInt(data.cacheReadTokens) || 0
+          const allTokens =
+            parseInt(data.allTokens) ||
+            inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens
+          const requests = parseInt(data.requests) || 0
+
+          let cost = await sumModelCosts(accountId, 'daily', dateStr)
+
+          if (cost === 0 && allTokens > 0) {
+            const fallbackUsage = {
+              input_tokens: inputTokens,
+              output_tokens: outputTokens,
+              cache_creation_input_tokens: cacheCreateTokens,
+              cache_read_input_tokens: cacheReadTokens
+            }
+            const fallbackResult = CostCalculator.calculateCost(fallbackUsage, fallbackModel)
+            cost = fallbackResult.costs.total
+          }
+
+          const formattedCost = CostCalculator.formatCost(cost)
+          const accountInfo = accountMap.get(accountId)
+
+          dayData.accounts[accountId] = {
+            name: accountInfo ? accountInfo.name : `账号 ${accountId.slice(0, 8)}`,
+            cost,
+            formattedCost,
+            requests
+          }
+
+          accountCostTotals.set(accountId, (accountCostTotals.get(accountId) || 0) + cost)
+        }
+
+        trendData.push(dayData)
+      }
+    }
+
+    if (granularity === 'hour') {
+      trendData.sort((a, b) => new Date(a.hour) - new Date(b.hour))
+    } else {
+      trendData.sort((a, b) => new Date(a.date) - new Date(b.date))
+    }
+
+    const topAccounts = Array.from(accountCostTotals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([accountId]) => accountId)
+
+    return res.json({
+      success: true,
+      data: trendData,
+      granularity,
+      group,
+      groupLabel: groupLabels[group],
+      topAccounts,
+      totalAccounts: accountCostTotals.size
+    })
+  } catch (error) {
+    logger.error('❌ Failed to get account usage trend:', error)
+    return res
+      .status(500)
+      .json({ error: 'Failed to get account usage trend', message: error.message })
   }
 })
 
@@ -6641,6 +7235,9 @@ router.delete('/openai-accounts/:id', authenticateAdmin, async (req, res) => {
       })
     }
 
+    // 自动解绑所有绑定的 API Keys
+    const unboundCount = await apiKeyService.unbindAccountFromAllKeys(id, 'openai')
+
     // 如果账户在分组中，从分组中移除
     if (account.accountType === 'group') {
       const group = await accountGroupService.getAccountGroup(id)
@@ -6651,11 +7248,19 @@ router.delete('/openai-accounts/:id', authenticateAdmin, async (req, res) => {
 
     await openaiAccountService.deleteAccount(id)
 
-    logger.success(`✅ 删除 OpenAI 账户成功: ${account.name} (ID: ${id})`)
+    let message = 'OpenAI账号已成功删除'
+    if (unboundCount > 0) {
+      message += `，${unboundCount} 个 API Key 已切换为共享池模式`
+    }
+
+    logger.success(
+      `✅ 删除 OpenAI 账户成功: ${account.name} (ID: ${id}), unbound ${unboundCount} keys`
+    )
 
     return res.json({
       success: true,
-      message: '账户删除成功'
+      message,
+      unboundKeys: unboundCount
     })
   } catch (error) {
     logger.error('删除 OpenAI 账户失败:', error)
@@ -7004,11 +7609,22 @@ router.delete('/azure-openai-accounts/:id', authenticateAdmin, async (req, res) 
   try {
     const { id } = req.params
 
+    // 自动解绑所有绑定的 API Keys
+    const unboundCount = await apiKeyService.unbindAccountFromAllKeys(id, 'azure_openai')
+
     await azureOpenaiAccountService.deleteAccount(id)
+
+    let message = 'Azure OpenAI账号已成功删除'
+    if (unboundCount > 0) {
+      message += `，${unboundCount} 个 API Key 已切换为共享池模式`
+    }
+
+    logger.success(`🗑️ Admin deleted Azure OpenAI account: ${id}, unbound ${unboundCount} keys`)
 
     res.json({
       success: true,
-      message: 'Azure OpenAI account deleted successfully'
+      message,
+      unboundKeys: unboundCount
     })
   } catch (error) {
     logger.error('Failed to delete Azure OpenAI account:', error)
@@ -7373,6 +7989,9 @@ router.delete('/openai-responses-accounts/:id', authenticateAdmin, async (req, r
       })
     }
 
+    // 自动解绑所有绑定的 API Keys
+    const unboundCount = await apiKeyService.unbindAccountFromAllKeys(id, 'openai-responses')
+
     // 检查是否在分组中
     const groups = await accountGroupService.getAllGroups()
     for (const group of groups) {
@@ -7383,7 +8002,20 @@ router.delete('/openai-responses-accounts/:id', authenticateAdmin, async (req, r
     }
 
     const result = await openaiResponsesAccountService.deleteAccount(id)
-    res.json({ success: true, ...result })
+
+    let message = 'OpenAI-Responses账号已成功删除'
+    if (unboundCount > 0) {
+      message += `，${unboundCount} 个 API Key 已切换为共享池模式`
+    }
+
+    logger.success(`🗑️ Admin deleted OpenAI-Responses account: ${id}, unbound ${unboundCount} keys`)
+
+    res.json({
+      success: true,
+      ...result,
+      message,
+      unboundKeys: unboundCount
+    })
   } catch (error) {
     logger.error('Failed to delete OpenAI-Responses account:', error)
     res.status(500).json({

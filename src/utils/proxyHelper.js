@@ -56,7 +56,7 @@ class ProxyHelper {
       let agent = null
 
       if (proxy.type === 'socks5') {
-        const socksUrl = `socks5://${auth}${proxy.host}:${proxy.port}`
+        const socksUrl = `socks5h://${auth}${proxy.host}:${proxy.port}`
         const socksOptions = {
           keepAlive: true,
           keepAliveMsecs: 30000, // 30秒心跳

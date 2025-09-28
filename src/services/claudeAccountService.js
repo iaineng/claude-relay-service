@@ -500,6 +500,9 @@ class ClaudeAccountService {
             schedulable: account.schedulable !== 'false', // 默认为true，兼容历史数据
             // 添加自动停止调度设置
             autoStopOnWarning: account.autoStopOnWarning === 'true', // 默认为false
+            // 添加5小时自动停止状态
+            fiveHourAutoStopped: account.fiveHourAutoStopped === 'true',
+            fiveHourStoppedAt: account.fiveHourStoppedAt || null,
             // 添加统一User-Agent设置
             useUnifiedUserAgent: account.useUnifiedUserAgent === 'true', // 默认为false
             // 添加封号模式设置
@@ -1196,6 +1199,8 @@ class ClaudeAccountService {
         throw new Error('Account not found')
       }
 
+      const accountKey = `claude:account:${accountId}`
+
       // 清除限流状态
       delete accountData.rateLimitedAt
       delete accountData.rateLimitStatus
@@ -1215,6 +1220,15 @@ class ClaudeAccountService {
         )
       }
       await redis.setClaudeAccount(accountId, accountData)
+
+      // 显式删除Redis中的限流字段，避免旧标记阻止账号恢复调度
+      await redis.client.hdel(
+        accountKey,
+        'rateLimitedAt',
+        'rateLimitStatus',
+        'rateLimitEndAt',
+        'rateLimitAutoStopped'
+      )
 
       logger.success(`✅ Rate limit removed for account: ${accountData.name} (${accountId})`)
 
@@ -2328,7 +2342,7 @@ class ClaudeAccountService {
       for (const account of accounts) {
         // 只检查因5小时限制被自动停止的账号
         // 重要：不恢复手动停止的账号（没有fiveHourAutoStopped标记的）
-        if (account.fiveHourAutoStopped === 'true' && account.schedulable === 'false') {
+        if (account.fiveHourAutoStopped === true && account.schedulable === false) {
           result.checked++
 
           // 使用分布式锁防止并发修改

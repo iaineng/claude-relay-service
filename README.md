@@ -447,6 +447,8 @@ env_key = "CRS_OAI_KEY"
 export CRS_OAI_KEY="后台创建的API密钥"
 ```
 
+> ⚠️ 在通过 Nginx 反向代理 CRS 服务并使用 Codex CLI 时，需要在 http 块中添加 underscores_in_headers on;。因为 Nginx 默认会移除带下划线的请求头（如 session_id），一旦该头被丢弃，多账号环境下的粘性会话功能将失效。
+
 ### 5. 第三方工具API接入
 
 本服务支持多种API端点格式，方便接入不同的第三方工具（如Cherry Studio等）。
@@ -603,23 +605,6 @@ npm run service:status
    - 客户端验证失败时会返回403错误并记录详细信息
    - 通过日志可以查看实际的User-Agent格式，方便配置自定义客户端
 
-### 自定义客户端配置
-
-如需添加自定义客户端，可以修改 `config/config.js` 文件：
-
-```javascript
-clientRestrictions: {
-  predefinedClients: [
-    // ... 现有客户端配置
-    {
-      id: 'my_custom_client',
-      name: 'My Custom Client',
-      description: '我的自定义客户端',
-      userAgentPattern: /^MyClient\/[\d\.]+/i
-    }
-  ]
-}
-```
 
 ### 日志示例
 
