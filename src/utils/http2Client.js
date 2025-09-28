@@ -112,20 +112,25 @@ class Http2Client {
           `🔧 Creating HTTP/2 session through proxy ${proxyHost}:${proxyPort} to ${hostname}:${targetPort}`
         )
 
+        // 构建请求头
+        const connectHeaders = {
+          Host: `${hostname}:${targetPort}`
+        }
+
+        // 如果代理需要认证，添加 Proxy-Authorization 头
+        if (proxyUrl.username && proxyUrl.password) {
+          const auth = Buffer.from(`${proxyUrl.username}:${proxyUrl.password}`).toString('base64')
+          connectHeaders['Proxy-Authorization'] = `Basic ${auth}`
+          logger.debug(`🔑 Adding proxy authentication for user: ${proxyUrl.username}`)
+        }
+
         // 建立CONNECT隧道
         const connectReq = http.request({
           method: 'CONNECT',
           host: proxyHost,
           port: proxyPort,
           path: `${hostname}:${targetPort}`,
-          headers: {
-            Host: `${hostname}:${targetPort}`
-          },
-          // 如果代理需要认证，构建 username:password 格式
-          auth:
-            proxyUrl.username && proxyUrl.password
-              ? `${proxyUrl.username}:${proxyUrl.password}`
-              : undefined
+          headers: connectHeaders
         })
 
         connectReq.on('connect', (res, socket, _head) => {
