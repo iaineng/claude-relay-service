@@ -121,8 +121,11 @@ class Http2Client {
           headers: {
             Host: `${hostname}:${targetPort}`
           },
-          // 如果代理需要认证
-          auth: proxyUrl.auth || undefined
+          // 如果代理需要认证，构建 username:password 格式
+          auth:
+            proxyUrl.username && proxyUrl.password
+              ? `${proxyUrl.username}:${proxyUrl.password}`
+              : undefined
         })
 
         connectReq.on('connect', (res, socket, _head) => {
