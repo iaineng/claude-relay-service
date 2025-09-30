@@ -546,6 +546,7 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       weeklyOpusCostLimit,
       tags,
       activationDays, // 新增：激活后有效天数
+      activationUnit, // 新增：激活时间单位 (hours/days)
       expirationMode, // 新增：过期模式
       icon // 新增：图标
     } = req.body
@@ -642,14 +643,23 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
     }
 
     if (expirationMode === 'activation') {
+      // 验证激活时间单位
+      if (!activationUnit || !['hours', 'days'].includes(activationUnit)) {
+        return res.status(400).json({
+          error: 'Activation unit must be either "hours" or "days" when using activation mode'
+        })
+      }
+
+      // 验证激活时间数值
       if (
         !activationDays ||
         !Number.isInteger(Number(activationDays)) ||
         Number(activationDays) < 1
       ) {
-        return res
-          .status(400)
-          .json({ error: 'Activation days must be a positive integer when using activation mode' })
+        const unitText = activationUnit === 'hours' ? 'hours' : 'days'
+        return res.status(400).json({
+          error: `Activation ${unitText} must be a positive integer when using activation mode`
+        })
       }
       // 激活模式下不应该设置固定过期时间
       if (expiresAt) {
@@ -683,6 +693,7 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       weeklyOpusCostLimit,
       tags,
       activationDays,
+      activationUnit,
       expirationMode,
       icon
     })
@@ -723,6 +734,7 @@ router.post('/api-keys/batch', authenticateAdmin, async (req, res) => {
       weeklyOpusCostLimit,
       tags,
       activationDays,
+      activationUnit,
       expirationMode,
       icon
     } = req.body
@@ -773,6 +785,7 @@ router.post('/api-keys/batch', authenticateAdmin, async (req, res) => {
           weeklyOpusCostLimit,
           tags,
           activationDays,
+          activationUnit,
           expirationMode,
           icon
         })
@@ -2263,7 +2276,7 @@ router.delete('/claude-accounts/:accountId', authenticateAdmin, async (req, res)
     // 获取账户信息以检查是否在分组中
     const account = await claudeAccountService.getAccount(accountId)
     if (account && account.accountType === 'group') {
-      const groups = await accountGroupService.getAccountGroup(accountId)
+      const groups = await accountGroupService.getAccountGroups(accountId)
       for (const group of groups) {
         await accountGroupService.removeAccountFromGroup(accountId, group.id)
       }
@@ -2653,7 +2666,7 @@ router.delete('/claude-console-accounts/:accountId', authenticateAdmin, async (r
     // 获取账户信息以检查是否在分组中
     const account = await claudeConsoleAccountService.getAccount(accountId)
     if (account && account.accountType === 'group') {
-      const groups = await accountGroupService.getAccountGroup(accountId)
+      const groups = await accountGroupService.getAccountGroups(accountId)
       for (const group of groups) {
         await accountGroupService.removeAccountFromGroup(accountId, group.id)
       }
@@ -3888,7 +3901,7 @@ router.delete('/gemini-accounts/:accountId', authenticateAdmin, async (req, res)
     // 获取账户信息以检查是否在分组中
     const account = await geminiAccountService.getAccount(accountId)
     if (account && account.accountType === 'group') {
-      const groups = await accountGroupService.getAccountGroup(accountId)
+      const groups = await accountGroupService.getAccountGroups(accountId)
       for (const group of groups) {
         await accountGroupService.removeAccountFromGroup(accountId, group.id)
       }
@@ -6818,6 +6831,16 @@ router.get('/openai-accounts', authenticateAdmin, async (req, res) => {
     const { platform, groupId } = req.query
     let accounts = await openaiAccountService.getAllAccounts()
 
+    // 缓存账户所属分组，避免重复查询
+    const accountGroupCache = new Map()
+    const fetchAccountGroups = async (accountId) => {
+      if (!accountGroupCache.has(accountId)) {
+        const groups = await accountGroupService.getAccountGroups(accountId)
+        accountGroupCache.set(accountId, groups || [])
+      }
+      return accountGroupCache.get(accountId)
+    }
+
     // 根据查询参数进行筛选
     if (platform && platform !== 'all' && platform !== 'openai') {
       // 如果指定了其他平台，返回空数组
@@ -6830,7 +6853,7 @@ router.get('/openai-accounts', authenticateAdmin, async (req, res) => {
         // 筛选未分组账户
         const filteredAccounts = []
         for (const account of accounts) {
-          const groups = await accountGroupService.getAccountGroups(account.id)
+          const groups = await fetchAccountGroups(account.id)
           if (!groups || groups.length === 0) {
             filteredAccounts.push(account)
           }
@@ -6848,8 +6871,10 @@ router.get('/openai-accounts', authenticateAdmin, async (req, res) => {
       accounts.map(async (account) => {
         try {
           const usageStats = await redis.getAccountUsageStats(account.id, 'openai')
+          const groupInfos = await fetchAccountGroups(account.id)
           return {
             ...account,
+            groupInfos,
             usage: {
               daily: usageStats.daily,
               total: usageStats.total,
@@ -6858,8 +6883,10 @@ router.get('/openai-accounts', authenticateAdmin, async (req, res) => {
           }
         } catch (error) {
           logger.debug(`Failed to get usage stats for OpenAI account ${account.id}:`, error)
+          const groupInfos = await fetchAccountGroups(account.id)
           return {
             ...account,
+            groupInfos,
             usage: {
               daily: { requests: 0, tokens: 0, allTokens: 0 },
               total: { requests: 0, tokens: 0, allTokens: 0 },
