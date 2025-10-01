@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid')
 const crypto = require('crypto')
 const ProxyHelper = require('../utils/proxyHelper')
 const axios = require('axios')
+const http2Client = require('../utils/http2Client')
 const redis = require('../models/redis')
 const config = require('../../config/config')
 const claudeConstants = require('../utils/claudeConstants')
@@ -231,54 +232,54 @@ class ClaudeAccountService {
       // 创建代理agent
       const agent = this._createProxyAgent(accountData.proxy)
 
-      const response = await axios.post(
-        this.claudeApiUrl,
-        {
+      const response = await http2Client.request(this.claudeApiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/plain, */*',
+          'User-Agent': claudeConstants.USER_AGENT,
+          'Accept-Language': 'en-US,en;q=0.9',
+          Referer: 'https://claude.ai/',
+          Origin: 'https://claude.ai'
+        },
+        body: JSON.stringify({
           grant_type: 'refresh_token',
           refresh_token: refreshToken,
           client_id: this.claudeOauthClientId
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json, text/plain, */*',
-            'User-Agent': claudeConstants.USER_AGENT,
-            'Accept-Language': 'en-US,en;q=0.9',
-            Referer: 'https://claude.ai/',
-            Origin: 'https://claude.ai'
-          },
-          httpsAgent: agent,
-          timeout: 30000
-        }
-      )
+        }),
+        agent,
+        timeout: 30000
+      })
 
-      if (response.status === 200) {
+      if (response.statusCode === 200) {
+        const responseData = JSON.parse(response.body)
+
         // 记录完整的响应数据到专门的认证详细日志
-        logger.authDetail('Token refresh response', response.data)
+        logger.authDetail('Token refresh response', responseData)
 
         // 记录简化版本到主日志
         logger.info('📊 Token refresh response (analyzing for subscription info):', {
-          status: response.status,
-          hasData: !!response.data,
-          dataKeys: response.data ? Object.keys(response.data) : []
+          status: response.statusCode,
+          hasData: !!responseData,
+          dataKeys: responseData ? Object.keys(responseData) : []
         })
 
-        const { access_token, refresh_token, expires_in } = response.data
+        const { access_token, refresh_token, expires_in } = responseData
 
         // 检查是否有套餐信息
         if (
-          response.data.subscription ||
-          response.data.plan ||
-          response.data.tier ||
-          response.data.account_type
+          responseData.subscription ||
+          responseData.plan ||
+          responseData.tier ||
+          responseData.account_type
         ) {
           const subscriptionInfo = {
-            subscription: response.data.subscription,
-            plan: response.data.plan,
-            tier: response.data.tier,
-            accountType: response.data.account_type,
-            features: response.data.features,
-            limits: response.data.limits
+            subscription: responseData.subscription,
+            plan: responseData.plan,
+            tier: responseData.tier,
+            accountType: responseData.account_type,
+            features: responseData.features,
+            limits: responseData.limits
           }
           logger.info('🎯 Found subscription info in refresh response:', subscriptionInfo)
 
@@ -330,7 +331,7 @@ class ClaudeAccountService {
           expiresAt: accountData.expiresAt
         }
       } else {
-        throw new Error(`Token refresh failed with status: ${response.status}`)
+        throw new Error(`Token refresh failed with status: ${response.statusCode}`)
       }
     } catch (error) {
       // 记录刷新失败
@@ -1626,7 +1627,8 @@ class ClaudeAccountService {
       logger.debug(`📊 Fetching OAuth usage for account: ${accountData.name} (${accountId})`)
 
       // 请求 OAuth usage 接口
-      const response = await axios.get('https://api.anthropic.com/api/oauth/usage', {
+      const response = await http2Client.request('https://api.anthropic.com/api/oauth/usage', {
+        method: 'GET',
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
@@ -1635,26 +1637,28 @@ class ClaudeAccountService {
           'User-Agent': 'claude-cli/1.0.56 (external, cli)',
           'Accept-Language': 'en-US,en;q=0.9'
         },
-        httpsAgent: agent,
+        agent,
         timeout: 15000
       })
 
-      if (response.status === 200 && response.data) {
+      if (response.statusCode === 200 && response.body) {
+        const responseData = JSON.parse(response.body)
+
         logger.debug('✅ Successfully fetched OAuth usage data:', {
           accountId,
-          fiveHour: response.data.five_hour?.utilization,
-          sevenDay: response.data.seven_day?.utilization,
-          sevenDayOpus: response.data.seven_day_opus?.utilization
+          fiveHour: responseData.five_hour?.utilization,
+          sevenDay: responseData.seven_day?.utilization,
+          sevenDayOpus: responseData.seven_day_opus?.utilization
         })
 
-        return response.data
+        return responseData
       }
 
-      logger.warn(`⚠️ Failed to fetch OAuth usage for account ${accountId}: ${response.status}`)
+      logger.warn(`⚠️ Failed to fetch OAuth usage for account ${accountId}: ${response.statusCode}`)
       return null
     } catch (error) {
       // 403 错误通常表示使用的是 Setup Token 而非 OAuth
-      if (error.response?.status === 403) {
+      if (error.statusCode === 403) {
         logger.debug(
           `⚠️ OAuth usage API returned 403 for account ${accountId}. This account likely uses Setup Token instead of OAuth.`
         )
@@ -1664,7 +1668,7 @@ class ClaudeAccountService {
       // 其他错误正常记录
       logger.error(
         `❌ Failed to fetch OAuth usage for account ${accountId}:`,
-        error.response?.data || error.message
+        error.body || error.message
       )
       return null
     }

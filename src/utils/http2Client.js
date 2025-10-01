@@ -117,8 +117,6 @@ class Http2Client {
           Host: `${hostname}:${targetPort}`
         }
 
-        
-
         // 如果代理需要认证，添加 Proxy-Authorization 头
         if (proxyUrl.username && proxyUrl.password) {
           const auth = Buffer.from(`${proxyUrl.username}:${proxyUrl.password}`).toString('base64')
