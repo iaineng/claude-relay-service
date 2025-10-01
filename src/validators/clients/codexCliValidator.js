@@ -53,7 +53,8 @@ class CodexCliValidator {
       // 2. 对于特定路径，进行额外的严格验证
       // 对于 /openai 和 /azure 路径需要完整验证
       const strictValidationPaths = ['/openai', '/azure']
-      const needsStrictValidation = req.path && strictValidationPaths.some(path => req.path.startsWith(path))
+      const needsStrictValidation =
+        req.path && strictValidationPaths.some((path) => req.path.startsWith(path))
 
       if (!needsStrictValidation) {
         // 其他路径，只要 User-Agent 匹配就认为是 Codex CLI
@@ -124,8 +125,12 @@ class CodexCliValidator {
       const part1 = parts1[i] || 0
       const part2 = parts2[i] || 0
 
-      if (part1 < part2) return -1
-      if (part1 > part2) return 1
+      if (part1 < part2) {
+        return -1
+      }
+      if (part1 > part2) {
+        return 1
+      }
     }
 
     return 0
