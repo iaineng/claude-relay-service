@@ -53,6 +53,7 @@ class GeminiCliValidator {
       // 2. 对于 /gemini 路径，检查是否包含 generateContent
       if (path.includes('generateContent')) {
         // 包含 generateContent 的路径需要验证 User-Agent
+        // eslint-disable-next-line no-useless-escape
         const geminiCliPattern = /^GeminiCLI\/v?[\d\.]+/i
         if (!geminiCliPattern.test(userAgent)) {
           logger.debug(

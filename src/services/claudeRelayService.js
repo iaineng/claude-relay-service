@@ -505,12 +505,13 @@ class ClaudeRelayService {
 
     // 🧠 应用模型变种配置（在所有处理的最后，确保强制覆盖）
     if (modelVariant === 'thinking') {
+      const budgetTokens = processedBody.max_tokens ? processedBody.max_tokens - 1 : 31999
       processedBody.thinking = {
         type: 'enabled',
-        budget_tokens: 31999
+        budget_tokens: budgetTokens
       }
       logger.info(
-        `🧠 Applied thinking variant: enabled with budget 31999 tokens for model ${processedBody.model}`
+        `🧠 Applied thinking variant: enabled with budget ${budgetTokens} tokens for model ${processedBody.model}`
       )
     }
 
