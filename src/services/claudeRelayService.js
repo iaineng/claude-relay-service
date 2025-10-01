@@ -337,6 +337,27 @@ class ClaudeRelayService {
     // 深拷贝请求体
     const processedBody = JSON.parse(JSON.stringify(body))
 
+    // 🧠 解析模型名，分离变种后缀（如 claude-sonnet-4-20250514:thinking -> claude-sonnet-4-20250514）
+    if (processedBody.model && typeof processedBody.model === 'string') {
+      const colonIndex = processedBody.model.lastIndexOf(':')
+      if (colonIndex !== -1) {
+        const baseModel = processedBody.model.substring(0, colonIndex)
+        const variant = processedBody.model.substring(colonIndex + 1)
+
+        // 如果是支持的变种，分离处理
+        const supportedVariants = ['thinking']
+        if (supportedVariants.includes(variant)) {
+          logger.debug(
+            `🧠 Detected model variant in model name: ${processedBody.model} -> base: ${baseModel}, variant: ${variant}`
+          )
+          processedBody.model = baseModel // 只保留基础模型名，移除冒号后缀
+          if (!processedBody._modelVariant) {
+            processedBody._modelVariant = variant // 保存变种信息
+          }
+        }
+      }
+    }
+
     // 检测并保存模型变种信息（在深拷贝后立即提取）
     const modelVariant = processedBody._modelVariant
     // 移除内部元数据字段
