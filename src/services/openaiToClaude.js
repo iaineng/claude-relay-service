@@ -22,8 +22,11 @@ class OpenAIToClaudeConverter {
    * @returns {Object} Claude 格式的请求
    */
   convertRequest(openaiRequest) {
+    // 解析模型变种（如 claude-sonnet-4-20250514:thinking）
+    const { baseModel, variant } = this._parseModelVariant(openaiRequest.model)
+
     const claudeRequest = {
-      model: openaiRequest.model, // 直接使用提供的模型名，不进行映射
+      model: baseModel, // 使用提取的基础模型名
       messages: this._convertMessages(openaiRequest.messages),
       max_tokens: openaiRequest.max_tokens || 4096,
       temperature: openaiRequest.temperature,
@@ -31,8 +34,13 @@ class OpenAIToClaudeConverter {
       stream: openaiRequest.stream || false
     }
 
+    // 如果检测到模型变种，添加元数据
+    if (variant) {
+      claudeRequest._modelVariant = variant
+    }
+
     // Claude Code 必需的系统消息
-    const claudeCodeSystemMessage = "You are Claude Code, Anthropic's official CLI for Claude."
+    const claudeCodeSystemMessage = "You are a Claude agent, built on Anthropic's Claude Agent SDK."
 
     claudeRequest.system = claudeCodeSystemMessage
 
@@ -460,6 +468,42 @@ class OpenAIToClaudeConverter {
     }
 
     return baseChunk
+  }
+
+  /**
+   * 解析模型变种（如 claude-sonnet-4-20250514:thinking）
+   * @param {String} modelName - 完整的模型名称
+   * @returns {Object} { baseModel: string, variant: string | null }
+   */
+  _parseModelVariant(modelName) {
+    if (!modelName || typeof modelName !== 'string') {
+      return { baseModel: modelName, variant: null }
+    }
+
+    // 检查是否包含冒号
+    const lastColonIndex = modelName.lastIndexOf(':')
+    if (lastColonIndex === -1) {
+      return { baseModel: modelName, variant: null }
+    }
+
+    // 提取变种后缀
+    const baseModel = modelName.substring(0, lastColonIndex)
+    const variant = modelName.substring(lastColonIndex + 1)
+
+    // 验证变种类型
+    const supportedVariants = ['thinking']
+    if (supportedVariants.includes(variant)) {
+      logger.debug(
+        `🧠 Detected model variant: ${modelName} -> base: ${baseModel}, variant: ${variant}`
+      )
+      return { baseModel, variant }
+    }
+
+    // 如果不是支持的变种，返回原始模型名
+    logger.debug(
+      `⚠️ Unknown variant '${variant}' in model name: ${modelName}, using full name as model`
+    )
+    return { baseModel: modelName, variant: null }
   }
 
   /**

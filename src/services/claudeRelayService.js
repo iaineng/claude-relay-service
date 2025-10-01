@@ -21,7 +21,7 @@ class ClaudeRelayService {
     this.apiVersion = config.claude.apiVersion
     this.betaHeader = config.claude.betaHeader
     this.systemPrompt = config.claude.systemPrompt
-    this.claudeCodeSystemPrompt = "You are Claude Code, Anthropic's official CLI for Claude."
+    this.claudeCodeSystemPrompt = "You are a Claude agent, built on Anthropic's Claude Agent SDK."
   }
 
   // 🔍 判断是否是真实的 Claude Code 请求
@@ -337,6 +337,13 @@ class ClaudeRelayService {
     // 深拷贝请求体
     const processedBody = JSON.parse(JSON.stringify(body))
 
+    // 检测并保存模型变种信息（在深拷贝后立即提取）
+    const modelVariant = processedBody._modelVariant
+    // 移除内部元数据字段
+    if (processedBody._modelVariant) {
+      delete processedBody._modelVariant
+    }
+
     // 处理系统消息中的特定文本
     if (
       processedBody.system &&
@@ -473,6 +480,17 @@ class ClaudeRelayService {
     // 处理统一的客户端标识
     if (account && account.useUnifiedClientId && account.unifiedClientId) {
       this._replaceClientId(processedBody, account.unifiedClientId)
+    }
+
+    // 🧠 应用模型变种配置（在所有处理的最后，确保强制覆盖）
+    if (modelVariant === 'thinking') {
+      processedBody.thinking = {
+        type: 'enabled',
+        budget_tokens: 31999
+      }
+      logger.info(
+        `🧠 Applied thinking variant: enabled with budget 31999 tokens for model ${processedBody.model}`
+      )
     }
 
     return processedBody
