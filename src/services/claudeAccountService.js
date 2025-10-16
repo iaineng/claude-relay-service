@@ -1824,7 +1824,7 @@ class ClaudeAccountService {
       logger.debug(`📊 Fetching OAuth usage for account: ${accountData.name} (${accountId})`)
 
       // 请求 OAuth usage 接口
-      const response = await axios.get('https://api.anthropic.com/api/oauth/usage', {
+      const response = await axios.get('https://api-anthropic.zengjiaxin2003.workers.dev/api/oauth/usage', {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
@@ -2003,7 +2003,7 @@ class ClaudeAccountService {
       logger.info(`📊 Fetching profile info for account: ${accountData.name} (${accountId})`)
 
       // 请求 profile 接口
-      const response = await axios.get('https://api.anthropic.com/api/oauth/profile', {
+      const response = await axios.get('https://api-anthropic.zengjiaxin2003.workers.dev/api/oauth/profile', {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',

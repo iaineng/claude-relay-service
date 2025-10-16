@@ -42,7 +42,7 @@ const config = {
 
   // 🎯 Claude API配置
   claude: {
-    apiUrl: process.env.CLAUDE_API_URL || 'https://api.anthropic.com/v1/messages',
+    apiUrl: process.env.CLAUDE_API_URL || 'https://api-anthropic.zengjiaxin2003.workers.dev/v1/messages',
     apiVersion: process.env.CLAUDE_API_VERSION || '2023-06-01',
     betaHeader:
       process.env.CLAUDE_BETA_HEADER ||
