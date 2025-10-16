@@ -937,7 +937,7 @@ class ClaudeRelayService {
       // 支持自定义路径（如 count_tokens）
       let requestPath = url.pathname
       if (requestOptions.customPath) {
-        const baseUrl = new URL('https://api.anthropic.com')
+        const baseUrl = new URL('https://api-anthropic.zengjiaxin2003.workers.dev')
         const customUrl = new URL(requestOptions.customPath, baseUrl)
         requestPath = customUrl.pathname
       }
