@@ -497,14 +497,21 @@ async function handleStandardStreamGenerateContent(req, res) {
       candidatesTokenCount: 0,
       totalTokenCount: 0
     }
+    let streamBuffer = '' // 用于处理跨chunk的不完整JSON
 
     streamResponse.on('data', (chunk) => {
       try {
         if (!res.destroyed) {
           const chunkStr = chunk.toString()
 
-          // 处理 SSE 格式的数据
-          const lines = chunkStr.split('\n')
+          // 将新数据添加到缓冲区
+          streamBuffer += chunkStr
+
+          // 处理 SSE 格式的数据，按行分割
+          const lines = streamBuffer.split('\n')
+          // 保留最后一个可能不完整的行
+          streamBuffer = lines.pop() || ''
+
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const jsonStr = line.substring(6).trim()
@@ -525,7 +532,11 @@ async function handleStandardStreamGenerateContent(req, res) {
                     res.write(`data: ${JSON.stringify(data)}\n\n`)
                   }
                 } catch (e) {
-                  // 忽略解析错误
+                  // 记录 JSON 解析错误，帮助调试
+                  logger.warn(`Failed to parse SSE JSON in stream: ${e.message}`, {
+                    jsonLength: jsonStr.length,
+                    jsonPreview: jsonStr.substring(0, 200)
+                  })
                 }
               } else if (jsonStr === '[DONE]') {
                 // 保持 [DONE] 标记
